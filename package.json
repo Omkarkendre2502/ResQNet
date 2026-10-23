@@ -1,0 +1,24 @@
+{
+  "name": "resqnet-smart-emergency-system",
+  "version": "1.0.0",
+  "description": "ResQNet – Smart Emergency Response & Disaster Management System",
+  "scripts": {
+    "dev": "npm --prefix client run dev",
+    "dev:all": "cmd.exe /c start cmd.exe /k \"cd server && npm run dev\" && cmd.exe /c \"cd client && npm run dev\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server start"
+  },
+  "keywords": [
+    "emergency-response",
+    "disaster-management",
+    "react",
+    "bootstrap",
+    "leaflet",
+    "nodejs",
+    "express"
+  ],
+  "author": "ResQNet Team",
+  "license": "MIT"
+}
