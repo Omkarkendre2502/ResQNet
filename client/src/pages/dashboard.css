@@ -1,0 +1,464 @@
+/* ==========================================================================
+   ResQNet Dashboard Design System (Citizen, Admin & Rescue Control Room)
+   WCAG AA compliant, Mobile-first, Responsive, Smooth 150-250ms motion
+   ========================================================================== */
+
+/* Brand & Status Color Tokens */
+:root {
+  --resq-navy-950: #070d1e;
+  --resq-navy-900: #0b1329;
+  --resq-navy-800: #132247;
+  --resq-navy-700: #1e3366;
+  --resq-red-600: #dc2626;
+  --resq-red-700: #b91c1c;
+  --resq-surface: #ffffff;
+  --resq-surface-subtle: #f8fafc;
+  --resq-border: #e2e8f0;
+  --resq-text-primary: #0f172a;
+  --resq-text-secondary: #475569;
+  --resq-text-muted: #64748b;
+  --resq-motion-timing: 200ms;
+}
+
+/* Base Card & Elevation */
+.resq-card {
+  background: var(--resq-surface);
+  border: 1px solid var(--resq-border);
+  border-radius: 10px;
+  transition: transform var(--resq-motion-timing) cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow var(--resq-motion-timing) cubic-bezier(0.16, 1, 0.3, 1),
+              border-color var(--resq-motion-timing) ease;
+}
+
+/* Stat Card Grid: wraps to 3 per row on laptops (minmax(210px, 1fr)), 2 or 1 on smaller screens */
+.stat-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px;
+  align-items: stretch;
+  margin-bottom: 1.5rem;
+  width: 100%;
+}
+
+/* Stat Cards: horizontal layout with 44px circle icon on left and text block on right */
+.stat-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  background: var(--resq-surface);
+  border: 1px solid var(--resq-border);
+  border-radius: 10px;
+  min-height: 96px;
+  height: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  position: relative;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.stat-card.clickable-card {
+  cursor: pointer;
+  user-select: none;
+}
+
+.stat-card.clickable-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px -2px rgba(11, 19, 41, 0.08), 0 2px 4px -2px rgba(11, 19, 41, 0.04);
+  border-color: #cbd5e1;
+}
+
+.stat-card:focus-visible {
+  outline: 2px solid var(--resq-red-600);
+  outline-offset: 2px;
+}
+
+/* Active/selected filter card keeps outline/ring without changing card dimensions */
+.stat-card.active-card {
+  background-color: #f8fafc;
+  box-shadow: 0 0 0 2px var(--card-active-color, #2563eb);
+}
+
+.stat-card.ring-danger { --card-active-color: #dc2626; border-color: #dc2626 !important; }
+.stat-card.ring-warning { --card-active-color: #d97706; border-color: #d97706 !important; }
+.stat-card.ring-success { --card-active-color: #16a34a; border-color: #16a34a !important; }
+.stat-card.ring-info { --card-active-color: #0284c7; border-color: #0284c7 !important; }
+.stat-card.ring-primary { --card-active-color: #2563eb; border-color: #2563eb !important; }
+.stat-card.ring-secondary { --card-active-color: #475569; border-color: #475569 !important; }
+
+/* Left icon circle: fixed 44px circle, flex-shrink: 0 */
+.stat-card-icon-circle {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Right text block: min-width: 0 */
+.stat-card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* Inside text block, stack vertically: label, value, hint text */
+.stat-card-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+  line-height: 1.25;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat-card-value-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.stat-card-value {
+  font-size: clamp(1.5rem, 2.2vw, 2rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  color: #0f172a;
+}
+
+.stat-card-value-text {
+  font-size: clamp(1.1rem, 1.4vw, 1.35rem) !important;
+  line-height: 1.2 !important;
+  white-space: normal !important;
+}
+
+.stat-card-hint {
+  font-size: 0.72rem;
+  color: #64748b;
+  line-height: 1.25;
+  margin-top: 3px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Row Flash Highlight */
+@keyframes flashRow {
+  0% { background-color: rgba(220, 38, 38, 0.18); }
+  50% { background-color: rgba(37, 99, 235, 0.12); }
+  100% { background-color: transparent; }
+}
+
+.table-highlight-flash {
+  animation: flashRow 2s ease-out forwards;
+}
+
+/* Waiting Time Warning Indicator (>10min unassigned Critical/High) */
+.waiting-time-alert {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background-color: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  animation: waitingPulse 1.8s infinite;
+}
+
+@keyframes waitingPulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+  70% { transform: scale(1.02); box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+}
+
+/* Touch Targets >= 44px */
+.btn-touch-target,
+.btn-resq-danger,
+.pagination .page-link,
+.navbar button,
+.form-select-sm,
+.btn-sm {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 768px) {
+  .btn-touch-target,
+  .btn-resq-danger,
+  .btn {
+    min-height: 44px;
+  }
+}
+
+/* Sticky Headers */
+.sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(8px);
+  background-color: rgba(248, 250, 252, 0.95);
+}
+
+/* Table Responsive Stacked Cards on Mobile (< 768px) */
+@media (max-width: 767.98px) {
+  .table-responsive-cards table,
+  .table-responsive-cards thead,
+  .table-responsive-cards tbody,
+  .table-responsive-cards th,
+  .table-responsive-cards td,
+  .table-responsive-cards tr {
+    display: block;
+  }
+
+  .table-responsive-cards thead tr {
+    position: absolute;
+    top: -9999px;
+    left: -9999px;
+  }
+
+  .table-responsive-cards tr {
+    margin-bottom: 0.85rem;
+    border: 1px solid var(--resq-border);
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    padding: 0.5rem 0.75rem;
+  }
+
+  .table-responsive-cards td {
+    border: none;
+    border-bottom: 1px solid #f1f5f9;
+    position: relative;
+    padding: 0.45rem 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    text-align: right;
+    font-size: 0.82rem;
+  }
+
+  .table-responsive-cards td:last-child {
+    border-bottom: none;
+    padding-top: 0.6rem;
+  }
+
+  .table-responsive-cards td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--resq-text-secondary);
+    text-transform: uppercase;
+    font-size: 0.68rem;
+    letter-spacing: 0.03em;
+    text-align: left;
+    padding-right: 0.75rem;
+  }
+}
+
+/* 6-Stage Progress Timeline */
+.progress-timeline {
+  width: 100%;
+  padding: 0.75rem 0;
+}
+
+.progress-timeline-horizontal .timeline-track {
+  display: flex;
+  justify-content: space-between;
+  position: relative;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.progress-timeline-horizontal .timeline-step {
+  flex: 1;
+  min-width: 110px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+}
+
+.progress-timeline-horizontal .timeline-connector {
+  position: absolute;
+  top: 18px;
+  left: -50%;
+  width: 100%;
+  height: 3px;
+  background-color: #e2e8f0;
+  z-index: 1;
+}
+
+.progress-timeline-horizontal .step-done + .timeline-step .timeline-connector,
+.progress-timeline-horizontal .step-current .timeline-connector {
+  background-color: #10b981;
+}
+
+.timeline-node {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f1f5f9;
+  border: 2px solid #cbd5e1;
+  color: #64748b;
+  position: relative;
+  z-index: 2;
+  transition: all var(--resq-motion-timing) ease;
+}
+
+.step-done .timeline-node {
+  background-color: #10b981;
+  border-color: #059669;
+  color: #ffffff;
+}
+
+.step-current .timeline-node {
+  background-color: #2563eb;
+  border-color: #1d4ed8;
+  color: #ffffff;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.2);
+}
+
+.timeline-pulse-ring {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 2px solid #2563eb;
+  animation: pulseNode 1.5s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+}
+
+@keyframes pulseNode {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+.timeline-content {
+  margin-top: 0.5rem;
+  width: 100%;
+  padding: 0 0.25rem;
+}
+
+.timeline-stage-title {
+  font-size: 0.78rem;
+  margin-bottom: 0.15rem;
+}
+
+.timeline-stage-desc {
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+
+/* Vertical Timeline (used in Tracking Drawers / Modals) */
+.progress-timeline-vertical .timeline-track {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.progress-timeline-vertical .timeline-step {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  position: relative;
+  padding-bottom: 1.25rem;
+}
+
+.progress-timeline-vertical .timeline-step:last-child {
+  padding-bottom: 0;
+}
+
+.progress-timeline-vertical .timeline-connector {
+  position: absolute;
+  top: 36px;
+  left: 17px;
+  width: 2px;
+  height: calc(100% - 36px);
+  background-color: #e2e8f0;
+  z-index: 1;
+}
+
+.progress-timeline-vertical .step-done .timeline-connector {
+  background-color: #10b981;
+}
+
+.progress-timeline-vertical .timeline-content {
+  margin-top: 0;
+  margin-left: 0.85rem;
+  text-align: left;
+}
+
+/* Shimmer Skeleton */
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Pulse dot animation */
+.pulse-dot-sm {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  animation: pulseDot 2s infinite;
+}
+
+@keyframes pulseDot {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(22, 163, 74, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+}
+
+/* Spin animation for refresh button */
+.spin-anim {
+  animation: spin 0.85s linear infinite;
+}
+
+@keyframes spin {
+  100% { transform: rotate(360deg); }
+}
+
+.hover-spin:hover {
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+}
+
+/* Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

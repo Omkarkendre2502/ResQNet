@@ -3,10 +3,16 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useApp } from '../context/AppContext';
 
-export const IncidentMap = ({ incidentsList, height = '450px' }) => {
+export const IncidentMap = ({
+  incidentsList,
+  height = '450px',
+  userLocation = null,
+  autoFitKey = 0
+}) => {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersLayerRef = useRef(null);
+  const userMarkerRef = useRef(null);
   const { setSelectedIncident, incidents: contextIncidents } = useApp();
 
   const items = incidentsList || contextIncidents;
@@ -15,13 +21,13 @@ export const IncidentMap = ({ incidentsList, height = '450px' }) => {
   const getSeverityColor = (severity) => {
     switch (severity?.toLowerCase()) {
       case 'critical':
-        return '#dc2626'; // Emergency Red
+        return '#dc2626';
       case 'high':
-        return '#ea580c'; // Orange
+        return '#ea580c';
       case 'medium':
-        return '#d97706'; // Amber
+        return '#d97706';
       case 'low':
-        return '#16a34a'; // Green
+        return '#16a34a';
       default:
         return '#2563eb';
     }
@@ -62,6 +68,25 @@ export const IncidentMap = ({ incidentsList, height = '450px' }) => {
     });
   };
 
+  // User location pulsating marker
+  const createUserLocationMarker = () => {
+    return L.divIcon({
+      className: 'user-leaflet-location-marker',
+      html: `
+        <div style="
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          background: #2563eb;
+          border: 3px solid #ffffff;
+          box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.35);
+        "></div>
+      `,
+      iconSize: [22, 22],
+      iconAnchor: [11, 11]
+    });
+  };
+
   // Initialize Map centered on Pune
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -70,7 +95,7 @@ export const IncidentMap = ({ incidentsList, height = '450px' }) => {
       const map = L.map(mapContainerRef.current, {
         center: [18.5204, 73.8567], // Pune coordinates
         zoom: 12,
-        scrollWheelZoom: false
+        scrollWheelZoom: true
       });
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -90,7 +115,7 @@ export const IncidentMap = ({ incidentsList, height = '450px' }) => {
     };
   }, []);
 
-  // Update Markers
+  // Update Incident Markers
   useEffect(() => {
     if (!mapInstanceRef.current || !markersLayerRef.current) return;
 
@@ -134,7 +159,7 @@ export const IncidentMap = ({ incidentsList, height = '450px' }) => {
                 📍 ${inc.location}
               </div>
               <div style="font-size: 11px; color: #334155; margin-bottom: 8px;">
-                Status: <strong>${inc.status}</strong> | Affected: <strong>${inc.peopleAffected}</strong>
+                Status: <strong>${inc.status}</strong> | Affected: <strong>${inc.peopleAffected || 0}</strong>
               </div>
               <button id="btn-view-${inc.id}" style="
                 width: 100%;
@@ -142,12 +167,12 @@ export const IncidentMap = ({ incidentsList, height = '450px' }) => {
                 color: #fff;
                 border: none;
                 border-radius: 4px;
-                padding: 5px 8px;
+                padding: 6px 8px;
                 font-size: 11px;
                 font-weight: 600;
                 cursor: pointer;
               ">
-                View Incident Details
+                View Full Details & Track &rarr;
               </button>
             </div>
           `;
@@ -168,7 +193,27 @@ export const IncidentMap = ({ incidentsList, height = '450px' }) => {
     if (hasCoords && mapInstanceRef.current) {
       mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 13 });
     }
-  }, [items, setSelectedIncident]);
+  }, [items, setSelectedIncident, autoFitKey]);
+
+  // Handle User Location Pin
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    if (userLocation && userLocation.length === 2) {
+      if (userMarkerRef.current) {
+        mapInstanceRef.current.removeLayer(userMarkerRef.current);
+      }
+
+      const marker = L.marker(userLocation, {
+        icon: createUserLocationMarker()
+      }).bindPopup('<strong>Your Current Position</strong><br/>GPS Location Acquired');
+
+      marker.addTo(mapInstanceRef.current);
+      userMarkerRef.current = marker;
+
+      mapInstanceRef.current.setView(userLocation, 14, { animate: true });
+    }
+  }, [userLocation]);
 
   return (
     <div className="position-relative w-100" style={{ height }}>
@@ -179,7 +224,7 @@ export const IncidentMap = ({ incidentsList, height = '450px' }) => {
         style={{ zIndex: 1000 }}
       >
         <div className="fw-semibold mb-1 text-muted" style={{ fontSize: '0.7rem' }}>
-          SEVERITY
+          SEVERITY LEVEL
         </div>
         <div className="d-flex align-items-center gap-3" style={{ fontSize: '0.72rem' }}>
           <span className="d-flex align-items-center gap-1">
@@ -203,3 +248,5 @@ export const IncidentMap = ({ incidentsList, height = '450px' }) => {
     </div>
   );
 };
+
+export default IncidentMap;

@@ -82,68 +82,49 @@ export const Navbar = ({ setMobileOpen }) => {
   return (
     <header className="resq-navbar">
       {/* Left: Mobile Trigger & Control Center Badge */}
-      <div className="d-flex align-items-center gap-2 gap-sm-3">
+      <div className="d-flex align-items-center gap-2 gap-sm-3" style={{ minWidth: 0 }}>
         <button
-          className="btn btn-outline-secondary d-lg-none p-1 px-2"
+          className="btn btn-outline-secondary d-lg-none p-1 px-2 flex-shrink-0"
           onClick={() => setMobileOpen((prev) => !prev)}
           aria-label="Toggle navigation"
         >
           <Menu size={18} />
         </button>
 
-        <div className="d-none d-sm-flex align-items-center gap-2">
-          <span className="navbar-badge-emergency">
+        <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
+          <span className="navbar-badge-emergency flex-shrink-0">
             <span className="pulse-dot"></span>
-            <span>PUNE EMERGENCY DISPATCH</span>
+            <span className="d-none d-md-inline text-nowrap">PUNE EMERGENCY DISPATCH</span>
           </span>
-          <span className="badge bg-danger-subtle text-danger border border-danger-subtle">
+          <span className="badge bg-danger-subtle text-danger border border-danger-subtle d-none d-md-inline-flex flex-shrink-0">
             {activeIncidentsCount} Active
           </span>
         </div>
       </div>
 
-      {/* Right: Auto-Refresh Indicator, Helpline, Notifications, Profile & Actions */}
-      <div className="d-flex align-items-center gap-2">
-        {/* Live Feed Status & Manual Refresh Button */}
-        {currentUser && (
-          <div className="d-flex align-items-center gap-1 bg-light border rounded px-2 py-1">
-            <span
-              className="text-muted d-none d-md-inline"
-              style={{ fontSize: '0.72rem' }}
-              title={`Last synchronized: ${formatUpdateTime(lastUpdated)}`}
-            >
-              Updated: <strong>{formatUpdateTime(lastUpdated)}</strong>
-            </span>
-            <button
-              type="button"
-              className="btn btn-sm btn-link text-secondary p-0 ms-1"
-              onClick={refreshAllData}
-              title="Refresh feeds now (Auto-refreshes every 20s)"
-              disabled={isRefreshing}
-            >
-              <RefreshCw
-                size={13}
-                className={isRefreshing ? 'spin-anim text-danger' : 'text-muted'}
-              />
-            </button>
-          </div>
-        )}
-
-        {/* Pune Emergency Helpline */}
-        <div className="d-none d-xl-flex align-items-center gap-1 px-2 py-1 rounded bg-light border text-muted small">
-          <PhoneCall size={13} className="text-danger" />
-          <span>Control: </span>
-          <span className="fw-bold text-dark">112 / 101</span>
-        </div>
+      {/* Right: Helpline, Notifications, Profile & Actions */}
+      <div className="d-flex align-items-center gap-2 flex-nowrap" style={{ minWidth: 0 }}>
+        {/* Pune Emergency Helpline - below 992px hide text, keep phone icon button */}
+        <a
+          href="tel:112"
+          className="btn btn-sm btn-light border d-inline-flex align-items-center gap-1.5 px-2 py-1 text-decoration-none text-muted flex-shrink-0"
+          title="Emergency Control Room: 112 / 101"
+          aria-label="Call Emergency Helpline 112"
+        >
+          <PhoneCall size={13} className="text-danger flex-shrink-0" />
+          <span className="d-none d-lg-inline small">Control: </span>
+          <span className="d-none d-lg-inline small fw-bold text-dark">112 / 101</span>
+        </a>
 
         {/* Notification Bell Dropdown */}
         {currentUser && (
-          <div className="position-relative" ref={notifRef}>
+          <div className="position-relative flex-shrink-0" ref={notifRef}>
             <button
               type="button"
               className="btn btn-sm btn-light border position-relative p-1 px-2 text-dark"
               onClick={() => setShowNotifications(!showNotifications)}
               title="System Alerts & Dispatch Notifications"
+              aria-label="Notifications"
             >
               <Bell size={16} />
               {unreadNotificationsCount > 0 && (
@@ -246,18 +227,23 @@ export const Navbar = ({ setMobileOpen }) => {
         {currentUser ? (
           <button
             type="button"
-            className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1 py-1 px-2"
+            className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1.5 py-1 px-2 flex-shrink-0"
             onClick={() => setShowProfileModal(true)}
             title="My Profile & Security Settings"
+            aria-label="User Profile and Account Settings"
+            style={{ minWidth: 0 }}
           >
             <div
-              className="d-flex align-items-center justify-content-center bg-danger-subtle text-danger rounded-circle"
+              className="d-flex align-items-center justify-content-center bg-danger-subtle text-danger rounded-circle flex-shrink-0"
               style={{ width: '22px', height: '22px' }}
             >
               <User size={13} />
             </div>
-            <span className="d-none d-md-inline small fw-semibold text-dark">
-              {currentUser.name.split(' ')[0]}
+            <span
+              className="d-none d-md-inline small fw-semibold text-dark text-truncate"
+              style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            >
+              {currentUser.name}
             </span>
             <span
               className="badge bg-secondary text-uppercase d-none d-lg-inline"
@@ -271,7 +257,7 @@ export const Navbar = ({ setMobileOpen }) => {
         {/* Action: Report Emergency or Sign In */}
         {currentUser ? (
           <button
-            className="btn btn-resq-danger btn-sm d-flex align-items-center gap-1"
+            className="btn btn-resq-danger btn-sm d-inline-flex align-items-center gap-1 px-2.5 py-1 flex-shrink-0 fw-semibold"
             onClick={() => navigateTo('report-emergency')}
           >
             <Plus size={16} />
@@ -279,7 +265,7 @@ export const Navbar = ({ setMobileOpen }) => {
           </button>
         ) : (
           <button
-            className="btn btn-resq-primary btn-sm"
+            className="btn btn-resq-primary btn-sm flex-shrink-0"
             onClick={() => navigateTo('login')}
           >
             Sign In
