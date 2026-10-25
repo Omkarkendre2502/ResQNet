@@ -18,8 +18,8 @@ export const defaultIncidents = [
     reportedAt: "2026-10-22T21:45:00.000Z",
     updatedAt: "2026-10-22T22:15:00.000Z",
     timeline: [
-      { status: "Reported", time: "2026-10-22T21:45:00.000Z", note: "Emergency reported by Priya Sharma" },
-      { status: "Assigned", time: "2026-10-22T21:50:00.000Z", note: "Admin Rahul Patil assigned Pune Emergency Response Team 01" },
+      { status: "Reported", time: "2026-10-22T21:45:00.000Z", note: "Emergency reported via citizen hotline" },
+      { status: "Assigned", time: "2026-10-22T21:50:00.000Z", note: "Emergency Control assigned Pune Emergency Response Team 01" },
       { status: "On the Way", time: "2026-10-22T21:55:00.000Z", note: "PERT-01 dispatched from Shivajinagar Station" },
       { status: "Reached", time: "2026-10-22T22:05:00.000Z", note: "Team arrived at scene, water line connected" },
       { status: "In Progress", time: "2026-10-22T22:15:00.000Z", note: "Active fire suppression underway" }

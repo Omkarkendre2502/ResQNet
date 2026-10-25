@@ -3,9 +3,10 @@ import { useApp } from '../context/AppContext';
 import { UserPlus, Ambulance, MapPin, Users, Check, Phone } from 'lucide-react';
 
 export const AssignTeamModal = ({ incident, onClose }) => {
-  const { rescueTeams, assignTeam, setSelectedIncident } = useApp();
+  const { rescueTeams, assignTeam, setSelectedIncident, currentUser } = useApp();
+  const availableTeams = rescueTeams.filter((t) => t.status === 'Available');
   const [selectedTeamId, setSelectedTeamId] = useState(
-    incident.assignedTeamId || (rescueTeams[0] ? rescueTeams[0].id : '')
+    incident.assignedTeamId || (availableTeams[0] ? availableTeams[0].id : '')
   );
 
   const handleSubmit = (e) => {
@@ -37,7 +38,7 @@ export const AssignTeamModal = ({ incident, onClose }) => {
           <div className="modal-header bg-light border-bottom">
             <h5 className="modal-title fw-bold d-flex align-items-center gap-2 fs-6">
               <UserPlus size={18} className="text-danger" />
-              Assign Rescue Squad (Admin: Rahul Patil)
+              Assign Rescue Squad ({currentUser?.name ? `Admin: ${currentUser.name}` : 'Authorized Dispatch'})
             </h5>
             <button
               type="button"
@@ -72,13 +73,15 @@ export const AssignTeamModal = ({ incident, onClose }) => {
                     return (
                       <div
                         key={team.id}
-                        className={`p-3 rounded border cursor-pointer ${
+                        className={`p-3 rounded border ${
+                          !isAvailable ? 'opacity-50' : 'cursor-pointer'
+                        } ${
                           isSelected
                             ? 'border-primary bg-primary-subtle shadow-sm'
                             : 'border-light-subtle bg-white'
                         }`}
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => setSelectedTeamId(team.id)}
+                        style={{ cursor: isAvailable ? 'pointer' : 'not-allowed' }}
+                        onClick={() => isAvailable && setSelectedTeamId(team.id)}
                       >
                         <div className="d-flex align-items-center justify-content-between mb-1">
                           <div className="d-flex align-items-center gap-2">
@@ -86,7 +89,8 @@ export const AssignTeamModal = ({ incident, onClose }) => {
                               type="radio"
                               name="rescueTeam"
                               checked={isSelected}
-                              onChange={() => setSelectedTeamId(team.id)}
+                              disabled={!isAvailable}
+                              onChange={() => isAvailable && setSelectedTeamId(team.id)}
                               className="form-check-input mt-0"
                             />
                             <strong className="text-dark small">{team.name}</strong>

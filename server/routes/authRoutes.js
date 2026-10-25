@@ -2,6 +2,9 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
+import { getJwtSecret, getJwtExpiresIn } from '../config/jwt.js';
+import { registerValidator, loginValidator, changePasswordValidator } from '../middleware/validation.js';
+import { authLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
@@ -14,15 +17,15 @@ const generateToken = (user) => {
       name: user.name,
       teamId: user.teamId
     },
-    process.env.JWT_SECRET || 'resqnet_jwt_secret_pune_2026_super_secure_key',
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    getJwtSecret(),
+    { expiresIn: getJwtExpiresIn() }
   );
 };
 
 // POST /api/auth/register
-router.post('/register', async (req, res) => {
+router.post('/register', authLimiter, registerValidator, async (req, res) => {
   try {
-    const { name, email, password, phone, role } = req.body;
+    const { name, email, password, phone } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Name, email, and password are required.' });
@@ -33,39 +36,36 @@ router.post('/register', async (req, res) => {
       return res.status(409).json({ error: 'An account with this email already exists.' });
     }
 
-    // Public registration ALWAYS assigns citizen role — admin/rescue cannot self-register
+    // Public registration ALWAYS assigns citizen role with active status — no auto-login
     const newUser = new User({
       name: name.trim(),
       email: email.toLowerCase().trim(),
       password,
       role: 'citizen',
-      phone: phone || ''
+      phone: phone || '',
+      isActive: true
     });
 
     await newUser.save();
 
-    const token = generateToken(newUser);
-
     res.status(201).json({
-      message: 'Registration successful',
+      message: 'Account created. Please sign in.',
       user: {
         id: newUser._id,
         name: newUser.name,
         email: newUser.email,
         role: newUser.role,
-        phone: newUser.phone,
-        teamId: newUser.teamId
-      },
-      token
+        phone: newUser.phone
+      }
     });
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ error: error.message || 'Internal server error during registration.' });
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
 // POST /api/auth/login
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, loginValidator, async (req, res) => {
   try {
     const { email, password, role } = req.body;
 
@@ -78,17 +78,32 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
+    // Check account lockout
+    if (user.isLocked) {
+      return res.status(403).json({ error: 'Account is locked due to too many failed attempts. Try again after 15 minutes.' });
+    }
+
+    // Check account active status
+    if (user.isActive === false) {
+      return res.status(403).json({ error: 'Your account has been disabled. Contact the administrator.' });
+    }
+
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
+      await user.incLoginAttempts();
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    // Role check if provided
+    // Role check if provided: keep error generic to prevent account enumeration
     if (role && user.role !== role) {
-      return res.status(403).json({
-        error: `Account exists, but is registered as '${user.role}', not '${role}'.`
-      });
+      await user.incLoginAttempts();
+      return res.status(401).json({ error: 'Invalid email or password.' });
     }
+
+    // Reset failed login attempts on successful authentication
+    await user.resetLoginAttempts();
+    user.lastLogin = new Date();
+    await user.save();
 
     const token = generateToken(user);
 
@@ -100,13 +115,56 @@ router.post('/login', async (req, res) => {
         email: user.email,
         role: user.role,
         phone: user.phone,
-        teamId: user.teamId
+        teamId: user.teamId,
+        isActive: user.isActive,
+        lastLogin: user.lastLogin,
+        mustChangePassword: user.mustChangePassword
       },
       token
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: error.message || 'Internal server error during login.' });
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// PATCH /api/auth/change-password (Protected)
+router.patch('/change-password', authenticateToken, changePasswordValidator, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Incorrect current password.' });
+    }
+
+    // Password complexity check: admin requires min 12 with upper, lower, number, symbol
+    if (user.role === 'admin') {
+      const adminRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{12,}$/;
+      if (!adminRegex.test(newPassword)) {
+        return res.status(400).json({
+          error: 'Administrator passwords must be at least 12 characters and contain uppercase, lowercase, number, and special character.'
+        });
+      }
+    } else {
+      if (newPassword.length < 8) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
+      }
+    }
+
+    user.password = newPassword; // Triggers pre('save') to hash with salt 12
+    user.mustChangePassword = false;
+    await user.save();
+
+    res.json({ message: 'Password changed successfully.' });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -119,7 +177,8 @@ router.get('/me', authenticateToken, async (req, res) => {
     }
     res.json({ user });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Me endpoint error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -130,7 +189,7 @@ router.get('/users', authenticateToken, authorizeRoles('admin'), async (req, res
     res.json({ users, total: users.length });
   } catch (error) {
     console.error('Fetch users error:', error);
-    res.status(500).json({ error: error.message || 'Failed to retrieve users.' });
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 

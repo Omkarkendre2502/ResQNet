@@ -86,8 +86,8 @@ const adminIncident = incidents.find((i) => i.id === newId);
 if (!adminIncident) throw new Error('Incident not found in Admin Dashboard view');
 console.log(`[PASS] Found in Admin Dashboard: ${adminIncident.id} (${adminIncident.title}) - Status: ${adminIncident.status}, Squad: ${adminIncident.assignedTeamName || 'Unassigned'}`);
 
-// STEP 3: Admin Rahul Patil assigns the incident to Pune Emergency Response Team 01 (PERT-01)
-console.log('\n>>> STEP 3: Admin Rahul Patil assigns incident to PERT-01');
+// STEP 3: Admin assigns the incident to Pune Emergency Response Team 01 (PERT-01)
+console.log('\n>>> STEP 3: Admin assigns incident to PERT-01');
 const targetTeam = rescueTeams.find((t) => t.id === 'PERT-01');
 if (!targetTeam) throw new Error('Target team PERT-01 not found');
 
@@ -101,7 +101,7 @@ incidents = incidents.map((inc) => {
       updatedAt: new Date().toISOString(),
       timeline: [
         ...inc.timeline,
-        { status: 'Assigned', time: new Date().toISOString(), note: `Admin Rahul Patil assigned rescue team: ${targetTeam.name}` }
+        { status: 'Assigned', time: new Date().toISOString(), note: `Admin assigned rescue team: ${targetTeam.name}` }
       ]
     };
   }

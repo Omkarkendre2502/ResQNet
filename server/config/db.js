@@ -3,56 +3,37 @@ import User from '../models/User.js';
 import RescueTeam from '../models/RescueTeam.js';
 import { initialTeams } from '../data/sampleData.js';
 
-// Default seed accounts — each is checked individually so a partial seed is
-// always completed without overwriting any existing account or password.
-const DEFAULT_SEED_USERS = [
-  {
-    name: 'Rahul Patil',
-    email: 'admin@resqnet.org',
-    password: 'adminpassword',
-    role: 'admin',
-    phone: '+91 98230 45678'
-  },
-  {
-    name: 'Priya Sharma',
-    email: 'citizen@resqnet.org',
-    password: 'password123',
-    role: 'citizen',
-    phone: '+91 98220 12345'
-  },
-  {
-    name: 'Pune Emergency Response Team 01',
-    email: 'rescue@resqnet.org',
-    password: 'rescuepassword',
-    role: 'rescue',
-    teamId: 'PERT-01',
-    phone: '+91 (020) 2550-6789'
-  }
-];
-
 export const connectDB = async () => {
   const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/resqnet';
   try {
     const conn = await mongoose.connect(uri);
     console.log(`[MongoDB] Connected successfully to: ${conn.connection.host}:${conn.connection.port}/${conn.connection.name}`);
 
-    // --- Idempotent user seeding ---
-    // Check each default account by email; create only if missing.
-    // Never overwrites an existing account or its password.
-    let created = 0;
-    for (const seed of DEFAULT_SEED_USERS) {
-      const exists = await User.findOne({ email: seed.email });
-      if (!exists) {
-        await User.create(seed); // pre('save') hook bcrypt-hashes the password
-        console.log(`[MongoDB] Seeded missing account: ${seed.email} (${seed.role})`);
-        created++;
+    // --- Optional first-run admin bootstrap from .env ---
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    const adminName = process.env.ADMIN_NAME || 'System Administrator';
+
+    if (adminEmail && adminPassword) {
+      const existingAdmin = await User.findOne({ role: 'admin' });
+      if (!existingAdmin) {
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{12,}$/;
+        if (!passwordRegex.test(adminPassword)) {
+          console.warn('[Security Warning] ADMIN_PASSWORD in .env does not meet complexity requirements (min 12 chars with upper, lower, number, symbol). Skipping bootstrap.');
+        } else {
+          await User.create({
+            name: adminName.trim(),
+            email: adminEmail.toLowerCase().trim(),
+            password: adminPassword,
+            role: 'admin',
+            isActive: true
+          });
+          console.warn('================================================================================');
+          console.warn(`[SECURITY ALERT] Initial admin account created for ${adminEmail}.`);
+          console.warn('PLEASE REMOVE ADMIN_PASSWORD FROM YOUR .env FILE IMMEDIATELY FOR SECURITY!');
+          console.warn('================================================================================');
+        }
       }
-    }
-    if (created === 0) {
-      const total = await User.countDocuments();
-      console.log(`[MongoDB] All default accounts present. users collection has ${total} document(s).`);
-    } else {
-      console.log(`[MongoDB] Seeded ${created} missing default account(s).`);
     }
 
     // --- Idempotent rescue-team seeding ---

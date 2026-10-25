@@ -59,9 +59,15 @@ const IncidentSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Description is required']
     },
+    reportedById: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      index: true
+    },
     reportedBy: {
       type: String,
-      default: 'Priya Sharma'
+      default: ''
     },
     reporterEmail: {
       type: String,
@@ -74,11 +80,13 @@ const IncidentSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: ['Reported', 'Assigned', 'On the Way', 'Reached', 'In Progress', 'Completed', 'Resolved'],
-      default: 'Reported'
+      default: 'Reported',
+      index: true
     },
     assignedTeamId: {
       type: String,
-      default: null
+      default: null,
+      index: true
     },
     assignedTeamName: {
       type: String,
@@ -90,7 +98,8 @@ const IncidentSchema = new mongoose.Schema(
     },
     reportedAt: {
       type: Date,
-      default: Date.now
+      default: Date.now,
+      index: true
     },
     updatedAt: {
       type: Date,
@@ -106,6 +115,11 @@ const IncidentSchema = new mongoose.Schema(
     collection: 'incidents'
   }
 );
+
+IncidentSchema.index({ severity: 1 });
+IncidentSchema.index({ status: 1, reportedAt: -1 });
+IncidentSchema.index({ reportedById: 1, reportedAt: -1 });
+IncidentSchema.index({ assignedTeamId: 1, status: 1 });
 
 export const Incident = mongoose.model('Incident', IncidentSchema);
 export default Incident;

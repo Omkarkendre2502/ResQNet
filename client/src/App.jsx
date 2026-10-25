@@ -5,6 +5,7 @@ import { Navbar } from './components/Navbar';
 import { Toast } from './components/Toast';
 import { IncidentDetailModal } from './components/IncidentDetailModal';
 import { AssignTeamModal } from './components/AssignTeamModal';
+import { UserProfileModal } from './components/UserProfileModal';
 
 // Pages
 import { HomePage } from './pages/HomePage';
@@ -15,34 +16,115 @@ import { AdminDashboard } from './pages/AdminDashboard';
 import { RescueTeamDashboard } from './pages/RescueTeamDashboard';
 import { MapPage } from './pages/MapPage';
 
+import { ShieldAlert } from 'lucide-react';
+
 export function AppContent() {
-  const { activePage } = useApp();
+  const { activePage, currentUser, navigateTo, setRedirectAfterLogin } = useApp();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [assignTargetIncident, setAssignTargetIncident] = useState(null);
 
   const renderActivePage = () => {
-    switch (activePage) {
-      case 'home':
-        return <HomePage />;
-      case 'login':
-        return <LoginPage />;
-      case 'citizen-dashboard':
-        return <CitizenDashboard />;
-      case 'report-emergency':
-        return <ReportEmergencyPage />;
-      case 'admin-dashboard':
-        return (
-          <AdminDashboard
-            onOpenAssignModal={(inc) => setAssignTargetIncident(inc)}
-          />
-        );
-      case 'rescue-dashboard':
-        return <RescueTeamDashboard />;
-      case 'map':
-        return <MapPage />;
-      default:
-        return <HomePage />;
+    // 1. Public Pages
+    if (activePage === 'home') return <HomePage />;
+    if (activePage === 'login') return <LoginPage />;
+
+    // 2. Authentication Guard for Protected Pages
+    if (!currentUser) {
+      return (
+        <div className="container py-5 text-center">
+          <div className="resq-card p-5 mx-auto shadow-sm border" style={{ maxWidth: '500px' }}>
+            <div className="d-inline-flex p-3 rounded-circle bg-danger-subtle text-danger mb-3">
+              <ShieldAlert size={48} />
+            </div>
+            <h4 className="fw-bold text-dark mb-2">Authentication Required</h4>
+            <p className="text-secondary small mb-4">
+              Please sign in to your ResQNet account to access this emergency response portal.
+            </p>
+            <button
+              className="btn btn-resq-danger w-100 py-2 fw-semibold"
+              onClick={() => {
+                setRedirectAfterLogin(activePage);
+                navigateTo('login');
+              }}
+            >
+              Sign In to Continue
+            </button>
+          </div>
+        </div>
+      );
     }
+
+    // 3. Role Authorization Guards
+    if (activePage === 'admin-dashboard') {
+      if (currentUser.role !== 'admin') {
+        return (
+          <div className="container py-5 text-center">
+            <div className="resq-card p-5 mx-auto shadow-sm border" style={{ maxWidth: '500px' }}>
+              <div className="d-inline-flex p-3 rounded-circle bg-danger-subtle text-danger mb-3">
+                <ShieldAlert size={48} />
+              </div>
+              <h4 className="fw-bold text-dark mb-2">Access Denied</h4>
+              <p className="text-secondary small mb-4">
+                Administrator clearance is required for the Pune Disaster Control Center dashboard.
+                Your current account role is <strong>{currentUser.role}</strong>.
+              </p>
+              <button
+                className="btn btn-resq-danger w-100 py-2 fw-semibold"
+                onClick={() =>
+                  navigateTo(currentUser.role === 'rescue' ? 'rescue-dashboard' : 'citizen-dashboard')
+                }
+              >
+                Return to My Dashboard
+              </button>
+            </div>
+          </div>
+        );
+      }
+      return (
+        <AdminDashboard
+          onOpenAssignModal={(inc) => setAssignTargetIncident(inc)}
+        />
+      );
+    }
+
+    if (activePage === 'rescue-dashboard') {
+      if (currentUser.role !== 'rescue' && currentUser.role !== 'admin') {
+        return (
+          <div className="container py-5 text-center">
+            <div className="resq-card p-5 mx-auto shadow-sm border" style={{ maxWidth: '500px' }}>
+              <div className="d-inline-flex p-3 rounded-circle bg-danger-subtle text-danger mb-3">
+                <ShieldAlert size={48} />
+              </div>
+              <h4 className="fw-bold text-dark mb-2">Access Denied</h4>
+              <p className="text-secondary small mb-4">
+                This dashboard is restricted to authorized Pune Emergency Response Squad teams.
+              </p>
+              <button
+                className="btn btn-resq-danger w-100 py-2 fw-semibold"
+                onClick={() => navigateTo('citizen-dashboard')}
+              >
+                Return to Citizen Dashboard
+              </button>
+            </div>
+          </div>
+        );
+      }
+      return <RescueTeamDashboard />;
+    }
+
+    if (activePage === 'citizen-dashboard') {
+      return <CitizenDashboard />;
+    }
+
+    if (activePage === 'report-emergency') {
+      return <ReportEmergencyPage />;
+    }
+
+    if (activePage === 'map') {
+      return <MapPage />;
+    }
+
+    return <HomePage />;
   };
 
   return (
@@ -64,7 +146,13 @@ export function AppContent() {
             </div>
             <div className="d-flex align-items-center gap-2">
               <span className="badge bg-danger text-white">Pune Municipal Area</span>
-              <span className="badge bg-light text-dark border">Admin: Rahul Patil</span>
+              {currentUser ? (
+                <span className="badge bg-light text-dark border">
+                  {currentUser.role.toUpperCase()}: {currentUser.name}
+                </span>
+              ) : (
+                <span className="badge bg-light text-muted border">Official Portal</span>
+              )}
             </div>
           </div>
         </footer>
@@ -81,6 +169,9 @@ export function AppContent() {
           onClose={() => setAssignTargetIncident(null)}
         />
       )}
+
+      {/* User Profile & Security Settings Modal */}
+      <UserProfileModal />
 
       {/* Toast Alerts */}
       <Toast />

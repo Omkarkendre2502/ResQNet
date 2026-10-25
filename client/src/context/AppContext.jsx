@@ -1,20 +1,28 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { defaultIncidents, defaultTeams } from '../data/defaultData';
 
 const AppContext = createContext();
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-const STORAGE_INCIDENTS_KEY = 'resqnet_pune_incidents_v2';
-const STORAGE_TEAMS_KEY = 'resqnet_pune_teams_v2';
-const STORAGE_ACTIVE_TEAM_KEY = 'resqnet_pune_active_team_v2';
-const STORAGE_USER_KEY = 'resqnet_pune_user_v2';
-const STORAGE_TOKEN_KEY = 'resqnet_pune_token_v2';
-const STORAGE_USERS_LIST_KEY = 'resqnet_pune_users_list_v2';
+const STORAGE_ACTIVE_TEAM_KEY = 'resqnet_active_team';
+const STORAGE_USER_KEY = 'resqnet_session_user';
+const STORAGE_TOKEN_KEY = 'resqnet_session_token';
+
+// Clean up any legacy localStorage data
+try {
+  localStorage.removeItem('resqnet_pune_incidents_v2');
+  localStorage.removeItem('resqnet_pune_teams_v2');
+  localStorage.removeItem('resqnet_pune_users_list_v2');
+  localStorage.removeItem('resqnet_pune_user_v2');
+  localStorage.removeItem('resqnet_pune_token_v2');
+} catch (e) {
+  // Ignore in restricted environments
+}
 
 export const AppProvider = ({ children }) => {
   // Navigation State
   const [activePage, setActivePage] = useState('home');
+  const [redirectAfterLogin, setRedirectAfterLogin] = useState(null);
 
   // Selected Incident for Detail Modal
   const [selectedIncident, setSelectedIncident] = useState(null);
@@ -22,194 +30,58 @@ export const AppProvider = ({ children }) => {
   // Toast Notification State
   const [toast, setToast] = useState(null);
 
-  // Auth Token
+  // Auth Token stored in sessionStorage (secure session-only storage)
   const [authToken, setAuthToken] = useState(() => {
-    return localStorage.getItem(STORAGE_TOKEN_KEY) || null;
+    try {
+      return sessionStorage.getItem(STORAGE_TOKEN_KEY) || null;
+    } catch (e) {
+      return null;
+    }
   });
 
-  // Current User State (Default: Citizen Priya Sharma)
+  // Current User State loaded from sessionStorage only
   const [currentUser, setCurrentUser] = useState(() => {
-    const savedUser = localStorage.getItem(STORAGE_USER_KEY);
-    if (savedUser) {
-      try {
-        return JSON.parse(savedUser);
-      } catch (e) {
-        console.error('Error parsing stored user', e);
-      }
+    try {
+      const savedUser = sessionStorage.getItem(STORAGE_USER_KEY);
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch (e) {
+      return null;
     }
-    return {
-      id: 'user-citizen-priya',
-      name: 'Priya Sharma',
-      email: 'citizen@resqnet.org',
-      role: 'citizen',
-      phone: '+91 98220 12345'
-    };
   });
 
-  // Incidents State
-  const [incidents, setIncidents] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_INCIDENTS_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (e) {
-        console.error('Error parsing stored incidents', e);
-      }
-    }
-    return defaultIncidents;
-  });
+  // Incidents State (always live from server, never cached in localStorage)
+  const [incidents, setIncidents] = useState([]);
 
-  // Rescue Teams State
-  const [rescueTeams, setRescueTeams] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_TEAMS_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (e) {
-        console.error('Error parsing stored teams', e);
-      }
-    }
-    return defaultTeams;
-  });
+  // Rescue Teams State (always live from server, never cached in localStorage)
+  const [rescueTeams, setRescueTeams] = useState([]);
 
   // Active Rescue Team ID for Rescue Team Dashboard
   const [activeTeamId, setActiveTeamId] = useState(() => {
-    return localStorage.getItem(STORAGE_ACTIVE_TEAM_KEY) || 'PERT-01';
+    try {
+      return sessionStorage.getItem(STORAGE_ACTIVE_TEAM_KEY) || 'PERT-01';
+    } catch (e) {
+      return 'PERT-01';
+    }
   });
 
-  // Registered users list (for Admin user management panel)
-  const [registeredUsers, setRegisteredUsers] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_USERS_LIST_KEY);
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { return []; }
-    }
-    return [];
-  });
+  // Registered users list (for Admin management panel)
+  const [registeredUsers, setRegisteredUsers] = useState([]);
 
-  // Helper for Auth Headers
-  const getHeaders = useCallback(() => {
-    const headers = { 'Content-Type': 'application/json' };
-    const token = authToken || localStorage.getItem(STORAGE_TOKEN_KEY);
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    return headers;
-  }, [authToken]);
+  // Audit Logs list (for Admin management panel)
+  const [auditLogs, setAuditLogs] = useState([]);
 
-  // Fetch Incidents from Backend API
-  const fetchIncidents = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/incidents`);
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          // If database has incidents, use them
-          if (data.length > 0) {
-            setIncidents(data);
-            localStorage.setItem(STORAGE_INCIDENTS_KEY, JSON.stringify(data));
-          }
-        }
-      }
-    } catch (err) {
-      // Backend not running, local state remains active
-    }
-  }, []);
+  // Auto-refresh & Sync State
+  const [lastUpdated, setLastUpdated] = useState(() => Date.now());
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [readNotificationIds, setReadNotificationIds] = useState(() => new Set());
 
-  // Fetch Rescue Teams from Backend API
-  const fetchTeams = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/rescue-teams`);
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setRescueTeams(data);
-          localStorage.setItem(STORAGE_TEAMS_KEY, JSON.stringify(data));
-        }
-      }
-    } catch (err) {
-      // Backend not running, local state remains active
-    }
-  }, []);
-
-  // Fetch Registered Users from Backend API (Admin only)
-  const fetchUsers = useCallback(async () => {
-    try {
-      const token = authToken || localStorage.getItem(STORAGE_TOKEN_KEY);
-      if (!token) return;
-      const res = await fetch(`${API_BASE_URL}/auth/users`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.users)) {
-          setRegisteredUsers(data.users);
-          localStorage.setItem(STORAGE_USERS_LIST_KEY, JSON.stringify(data.users));
-        }
-      }
-    } catch (err) {
-      // Backend not running or unauthorized, silently skip
-    }
-  }, [authToken]);
-
-  // Initial Sync on Mount
-  useEffect(() => {
-    fetchIncidents();
-    fetchTeams();
-  }, [fetchIncidents, fetchTeams]);
-
-  // Persist Incidents to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_INCIDENTS_KEY, JSON.stringify(incidents));
-    } catch (e) {
-      console.error('Failed to save incidents to localStorage', e);
-    }
-  }, [incidents]);
-
-  // Persist Rescue Teams to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_TEAMS_KEY, JSON.stringify(rescueTeams));
-    } catch (e) {
-      console.error('Failed to save teams to localStorage', e);
-    }
-  }, [rescueTeams]);
-
-  // Persist Active Team ID to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_ACTIVE_TEAM_KEY, activeTeamId);
-    } catch (e) {
-      console.error('Failed to save activeTeamId to localStorage', e);
-    }
-  }, [activeTeamId]);
-
-  // Persist Current User & Token to localStorage
-  useEffect(() => {
-    try {
-      if (currentUser) {
-        localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(currentUser));
-      } else {
-        localStorage.removeItem(STORAGE_USER_KEY);
-      }
-      if (authToken) {
-        localStorage.setItem(STORAGE_TOKEN_KEY, authToken);
-      } else {
-        localStorage.removeItem(STORAGE_TOKEN_KEY);
-      }
-    } catch (e) {
-      console.error('Failed to save user/token to localStorage', e);
-    }
-  }, [currentUser, authToken]);
-
-  // Show Toast
+  // Toast notification
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => {
       setToast(null);
-    }, 4000);
+    }, 4500);
   };
 
   // Navigation
@@ -218,336 +90,438 @@ export const AppProvider = ({ children }) => {
     setActivePage(page);
   };
 
-  // 1. User Login (Authenticates with Backend API)
-  const login = async (email, password, role) => {
+  // Handle Unauthorized (401: Token missing, invalid, or expired)
+  const handleUnauthorized = useCallback(() => {
+    setCurrentUser(null);
+    setAuthToken(null);
+    setIncidents([]);
+    setRescueTeams([]);
+    setRegisteredUsers([]);
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, role })
-      });
+      sessionStorage.removeItem(STORAGE_USER_KEY);
+      sessionStorage.removeItem(STORAGE_TOKEN_KEY);
+      sessionStorage.removeItem(STORAGE_ACTIVE_TEAM_KEY);
+    } catch (e) {
+      console.error('Error clearing session credentials', e);
+    }
+    navigateTo('login');
+    showToast('Session expired, please sign in again.', 'warning');
+  }, []);
 
+  // Helper for Auth Headers
+  const getHeaders = useCallback(() => {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = authToken || (function() {
+      try { return sessionStorage.getItem(STORAGE_TOKEN_KEY); } catch (e) { return null; }
+    })();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+  }, [authToken]);
+
+  // Fetch Incidents from Backend API
+  const fetchIncidents = useCallback(async () => {
+    const token = authToken || (function() {
+      try { return sessionStorage.getItem(STORAGE_TOKEN_KEY); } catch (e) { return null; }
+    })();
+    if (!token) return;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/incidents`, {
+        headers: getHeaders()
+      });
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
-        setCurrentUser(data.user);
-        setAuthToken(data.token);
-        localStorage.setItem(STORAGE_TOKEN_KEY, data.token);
-        localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(data.user));
-
-        if (data.user.teamId) {
-          setActiveTeamId(data.user.teamId);
+        if (Array.isArray(data)) {
+          setIncidents(data);
         }
-
-        // Fetch fresh incidents & teams from DB
-        await fetchIncidents();
-        await fetchTeams();
-
-        showToast(`Welcome back, ${data.user.name}! (${data.user.role.toUpperCase()})`, 'success');
-
-        if (data.user.role === 'admin') navigateTo('admin-dashboard');
-        else if (data.user.role === 'rescue') navigateTo('rescue-dashboard');
-        else navigateTo('citizen-dashboard');
-
-        return { success: true };
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Invalid credentials');
       }
-    } catch (error) {
-      console.warn('API login failed or offline fallback:', error.message);
-      // Fallback local login if backend is unreachable
-      let userRole = role || 'citizen';
-      let userName = 'Priya Sharma';
-      let teamId = null;
-
-      if (email.includes('admin') || role === 'admin') {
-        userRole = 'admin';
-        userName = 'Rahul Patil';
-      } else if (email.includes('rescue') || role === 'rescue') {
-        userRole = 'rescue';
-        userName = 'Pune Emergency Response Team 01';
-        teamId = 'PERT-01';
-        setActiveTeamId('PERT-01');
-      }
-
-      const demoUser = {
-        id: `usr-${Date.now()}`,
-        name: userName,
-        email: email,
-        role: userRole,
-        teamId
-      };
-
-      setCurrentUser(demoUser);
-      showToast(`Logged in as ${demoUser.name} (${demoUser.role.toUpperCase()})`, 'success');
-
-      if (userRole === 'admin') navigateTo('admin-dashboard');
-      else if (userRole === 'rescue') navigateTo('rescue-dashboard');
-      else navigateTo('citizen-dashboard');
-      return { success: true };
+    } catch (err) {
+      console.warn('Network error fetching incidents:', err.message);
     }
+  }, [authToken, getHeaders, handleUnauthorized]);
+
+  // Fetch Rescue Teams from Backend API
+  const fetchTeams = useCallback(async () => {
+    const token = authToken || (function() {
+      try { return sessionStorage.getItem(STORAGE_TOKEN_KEY); } catch (e) { return null; }
+    })();
+    if (!token) return;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/rescue-teams`, {
+        headers: getHeaders()
+      });
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setRescueTeams(data);
+        }
+      }
+    } catch (err) {
+      console.warn('Network error fetching rescue teams:', err.message);
+    }
+  }, [authToken, getHeaders, handleUnauthorized]);
+
+  // Fetch Registered Users from Backend API (Admin only)
+  const fetchUsers = useCallback(async () => {
+    const token = authToken || (function() {
+      try { return sessionStorage.getItem(STORAGE_TOKEN_KEY); } catch (e) { return null; }
+    })();
+    if (!token || currentUser?.role !== 'admin') return;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/users`, {
+        headers: getHeaders()
+      });
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.users)) {
+          setRegisteredUsers(data.users);
+        }
+      }
+    } catch (err) {
+      console.warn('Network error fetching users:', err.message);
+    }
+  }, [authToken, currentUser?.role, getHeaders, handleUnauthorized]);
+
+  // Fetch Audit Logs from Backend API (Admin only)
+  const fetchAuditLogs = useCallback(async () => {
+    const token = authToken || (function() {
+      try { return sessionStorage.getItem(STORAGE_TOKEN_KEY); } catch (e) { return null; }
+    })();
+    if (!token || currentUser?.role !== 'admin') return;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/audit-logs`, {
+        headers: getHeaders()
+      });
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.logs)) {
+          setAuditLogs(data.logs);
+        }
+      }
+    } catch (err) {
+      console.warn('Network error fetching audit logs:', err.message);
+    }
+  }, [authToken, currentUser?.role, getHeaders, handleUnauthorized]);
+
+  // Refresh All Data (Manual & Background Auto-Polling)
+  const refreshAllData = useCallback(async () => {
+    const token = authToken || (function() {
+      try { return sessionStorage.getItem(STORAGE_TOKEN_KEY); } catch (e) { return null; }
+    })();
+    if (!token) return;
+
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        fetchIncidents(),
+        fetchTeams(),
+        currentUser?.role === 'admin' ? fetchUsers() : Promise.resolve(),
+        currentUser?.role === 'admin' ? fetchAuditLogs() : Promise.resolve()
+      ]);
+      setLastUpdated(Date.now());
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [authToken, currentUser?.role, fetchIncidents, fetchTeams, fetchUsers, fetchAuditLogs]);
+
+  // Sync on Mount & Auth State Changes
+  useEffect(() => {
+    if (authToken) {
+      fetchIncidents();
+      fetchTeams();
+      if (currentUser?.role === 'admin') {
+        fetchUsers();
+        fetchAuditLogs();
+      }
+      setLastUpdated(Date.now());
+    } else {
+      setIncidents([]);
+      setRescueTeams([]);
+      setRegisteredUsers([]);
+      setAuditLogs([]);
+    }
+  }, [authToken, currentUser?.role, fetchIncidents, fetchTeams, fetchUsers, fetchAuditLogs]);
+
+  // 20-Second Background Auto-Polling
+  useEffect(() => {
+    if (!authToken) return;
+    const interval = setInterval(() => {
+      refreshAllData();
+    }, 20000);
+    return () => clearInterval(interval);
+  }, [authToken, refreshAllData]);
+
+  // Derived Notifications from active and recent incidents
+  const notifications = incidents.slice(0, 10).map((inc) => {
+    let alertDesc = `${inc.location} • ${inc.status}`;
+    if (inc.status === 'Reported') {
+      alertDesc = `New report at ${inc.location} (${inc.severity} severity)`;
+    } else if (inc.status === 'Assigned') {
+      alertDesc = `Assigned to ${inc.assignedTeamName || 'Rescue Squad'}`;
+    } else if (inc.status === 'On the Way') {
+      alertDesc = `${inc.assignedTeamName || 'Squad'} is en route to ${inc.location}`;
+    } else if (inc.status === 'In Progress') {
+      alertDesc = `Active rescue operations underway at ${inc.location}`;
+    } else if (inc.status === 'Completed' || inc.status === 'Resolved') {
+      alertDesc = `Mission completed & verified at ${inc.location}`;
+    }
+    return {
+      id: `${inc.id}-${inc.status}`,
+      incidentId: inc.id,
+      title: `${inc.type} Emergency #${inc.id}`,
+      message: alertDesc,
+      time: inc.reportedAt,
+      severity: inc.severity,
+      status: inc.status,
+      incident: inc
+    };
+  });
+
+  const unreadNotificationsCount = notifications.filter(
+    (n) => !readNotificationIds.has(n.id)
+  ).length;
+
+  const markAllNotificationsAsRead = () => {
+    setReadNotificationIds(new Set(notifications.map((n) => n.id)));
+  };
+
+  const markNotificationAsRead = (id) => {
+    setReadNotificationIds((prev) => new Set([...prev, id]));
+  };
+
+  // Change Password for Logged-In User
+  const changePassword = async (currentPassword, newPassword) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/change-password`, {
+        method: 'PATCH',
+        headers: getHeaders(),
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to change password');
+      }
+      showToast(data.message || 'Password changed successfully.', 'success');
+      return { success: true };
+    } catch (err) {
+      showToast(err.message, 'danger');
+      return { success: false, error: err.message };
+    }
+  };
+
+  // Persist Current User & Token strictly to sessionStorage
+  useEffect(() => {
+    try {
+      if (currentUser) {
+        sessionStorage.setItem(STORAGE_USER_KEY, JSON.stringify(currentUser));
+      } else {
+        sessionStorage.removeItem(STORAGE_USER_KEY);
+      }
+      if (authToken) {
+        sessionStorage.setItem(STORAGE_TOKEN_KEY, authToken);
+      } else {
+        sessionStorage.removeItem(STORAGE_TOKEN_KEY);
+      }
+      if (activeTeamId) {
+        sessionStorage.setItem(STORAGE_ACTIVE_TEAM_KEY, activeTeamId);
+      }
+    } catch (e) {
+      console.error('Failed to sync session credentials', e);
+    }
+  }, [currentUser, authToken, activeTeamId]);
+
+  // 1. User Login (Single login form for all roles; server authenticates & returns role)
+  const login = async (email, password) => {
+    const res = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim(), password })
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      const errorMsg = data.error || 'Invalid email or password';
+      showToast(errorMsg, 'danger');
+      throw new Error(errorMsg);
+    }
+
+    setCurrentUser(data.user);
+    setAuthToken(data.token);
+    try {
+      sessionStorage.setItem(STORAGE_TOKEN_KEY, data.token);
+      sessionStorage.setItem(STORAGE_USER_KEY, JSON.stringify(data.user));
+    } catch (e) {}
+
+    if (data.user.teamId) {
+      setActiveTeamId(data.user.teamId);
+    }
+
+    showToast(`Welcome back, ${data.user.name}!`, 'success');
+
+    // Route to intended destination if remembered, otherwise to role dashboard
+    if (redirectAfterLogin) {
+      const destination = redirectAfterLogin;
+      setRedirectAfterLogin(null);
+      navigateTo(destination);
+    } else if (data.user.role === 'admin') {
+      navigateTo('admin-dashboard');
+    } else if (data.user.role === 'rescue') {
+      navigateTo('rescue-dashboard');
+    } else {
+      navigateTo('citizen-dashboard');
+    }
+
+    return { success: true, user: data.user };
   };
 
   // 2. User Logout
   const logout = () => {
     setCurrentUser(null);
     setAuthToken(null);
-    localStorage.removeItem(STORAGE_USER_KEY);
-    localStorage.removeItem(STORAGE_TOKEN_KEY);
+    setIncidents([]);
+    setRescueTeams([]);
+    setRegisteredUsers([]);
+    try {
+      sessionStorage.removeItem(STORAGE_USER_KEY);
+      sessionStorage.removeItem(STORAGE_TOKEN_KEY);
+      sessionStorage.removeItem(STORAGE_ACTIVE_TEAM_KEY);
+    } catch (e) {}
     navigateTo('home');
     showToast('Logged out successfully', 'info');
   };
 
-  // 3. Citizen Registration (Registers in Backend MongoDB)
+  // 3. Citizen Registration (Creates citizen account, does NOT auto-login)
   const registerCitizen = async (name, email, phone, password) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, phone, password, role: 'citizen' })
-      });
+    const res = await fetch(`${API_BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, phone, password })
+    });
 
-      if (res.ok) {
-        const data = await res.json();
-        setCurrentUser(data.user);
-        setAuthToken(data.token);
-        localStorage.setItem(STORAGE_TOKEN_KEY, data.token);
-        localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(data.user));
-        navigateTo('citizen-dashboard');
-        showToast(`Welcome to ResQNet, ${name}! Your citizen account has been created.`, 'success');
-        return true;
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Registration failed.');
-      }
-    } catch (err) {
-      console.warn('Backend register fallback:', err.message);
-      // Fallback local registration
-      const newUser = {
-        id: `usr-${Date.now()}`,
-        name,
-        email,
-        phone: phone || '+91 98220 00000',
-        role: 'citizen'
-      };
-      setCurrentUser(newUser);
-      navigateTo('citizen-dashboard');
-      showToast(`Welcome to ResQNet, ${name}! Account ready.`, 'success');
-      return true;
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      const errorMsg = data.error || (data.details ? data.details.map((d) => d.message).join('. ') : 'Registration failed.');
+      showToast(errorMsg, 'danger');
+      throw new Error(errorMsg);
     }
+
+    showToast('Account created successfully. Please sign in with your credentials.', 'success');
+    return { success: true, email: data.user?.email || email };
   };
 
-  // 4. Role Switcher for Pune presentation
-  const switchRole = async (role) => {
-    if (role === 'admin') {
-      try {
-        await login('admin@resqnet.org', 'adminpassword', 'admin');
-      } catch (e) {
-        const adminUser = {
-          id: 'user-admin-rahul',
-          name: 'Rahul Patil',
-          email: 'admin@resqnet.org',
-          role: 'admin',
-          phone: '+91 98230 45678'
-        };
-        setCurrentUser(adminUser);
-        navigateTo('admin-dashboard');
-        showToast('Switched to Admin: Rahul Patil', 'info');
-      }
-    } else if (role === 'rescue') {
-      try {
-        await login('rescue@resqnet.org', 'rescuepassword', 'rescue');
-      } catch (e) {
-        const rescueUser = {
-          id: 'user-rescue-pert01',
-          name: 'Pune Emergency Response Team 01',
-          email: 'rescue@resqnet.org',
-          role: 'rescue',
-          teamId: 'PERT-01',
-          phone: '+91 (020) 2550-6789'
-        };
-        setCurrentUser(rescueUser);
-        setActiveTeamId('PERT-01');
-        navigateTo('rescue-dashboard');
-        showToast('Switched to Rescue Unit: Pune Emergency Response Team 01', 'info');
-      }
-    } else {
-      try {
-        await login('citizen@resqnet.org', 'password123', 'citizen');
-      } catch (e) {
-        const citizenUser = {
-          id: 'user-citizen-priya',
-          name: 'Priya Sharma',
-          email: 'citizen@resqnet.org',
-          role: 'citizen',
-          phone: '+91 98220 12345'
-        };
-        setCurrentUser(citizenUser);
-        navigateTo('citizen-dashboard');
-        showToast('Switched to Citizen: Priya Sharma', 'info');
-      }
-    }
-  };
-
-  // 5. Citizen Reports Emergency (POST /api/incidents)
+  // 4. Citizen Reports Emergency (POST /api/incidents)
   const reportEmergency = async (formData) => {
-    let createdIncident = null;
+    const isFormData = typeof FormData !== 'undefined' && formData instanceof FormData;
 
-    try {
-      const res = await fetch(`${API_BASE_URL}/incidents`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({
-          type: formData.type,
-          location: formData.location,
-          coordinates: formData.coordinates,
-          peopleAffected: formData.peopleAffected,
-          severity: formData.severity,
-          description: formData.description,
-          photoUrl: formData.photoUrl,
-          reporterName: currentUser?.name || 'Priya Sharma',
-          reporterEmail: currentUser?.email || 'citizen@resqnet.org',
-          reporterPhone: currentUser?.phone || '+91 98220 12345'
-        })
-      });
+    const headers = {};
+    const token = authToken || (function() {
+      try { return sessionStorage.getItem(STORAGE_TOKEN_KEY); } catch (e) { return null; }
+    })();
 
-      if (res.ok) {
-        const data = await res.json();
-        createdIncident = data.incident;
-        setIncidents((prev) => [createdIncident, ...prev.filter((i) => i.id !== createdIncident.id)]);
-      }
-    } catch (err) {
-      console.warn('Backend reporting fallback to local:', err.message);
+    if (!token) {
+      handleUnauthorized();
+      throw new Error('Please sign in to report an emergency.');
     }
 
-    // Fallback local creation if backend did not return
-    if (!createdIncident) {
-      const newId = `INC-${Math.floor(2000 + Math.random() * 8000)}`;
-      const now = new Date().toISOString();
-      const defaultCoords = [
-        18.5204 + (Math.random() - 0.5) * 0.04,
-        73.8567 + (Math.random() - 0.5) * 0.04
-      ];
+    headers['Authorization'] = `Bearer ${token}`;
 
-      createdIncident = {
-        id: newId,
-        type: formData.type,
-        title: `${formData.type} Emergency at ${formData.location.split(',')[0]}`,
-        location: formData.location,
-        coordinates: formData.coordinates || defaultCoords,
-        peopleAffected: parseInt(formData.peopleAffected) || 1,
-        severity: formData.severity,
-        description: formData.description,
-        reportedBy: currentUser ? currentUser.name : 'Priya Sharma',
-        reporterEmail: currentUser ? currentUser.email : 'priya.sharma@example.com',
-        reporterPhone: currentUser?.phone || '+91 98220 12345',
-        status: 'Reported',
-        assignedTeamId: null,
-        assignedTeamName: null,
-        photoUrl: formData.photoUrl || null,
-        reportedAt: now,
-        updatedAt: now,
-        timeline: [
-          {
-            status: 'Reported',
-            time: now,
-            note: `Emergency reported by ${currentUser ? currentUser.name : 'Priya Sharma'}. Severity: ${formData.severity}.`
-          }
-        ]
-      };
-      setIncidents((prev) => [createdIncident, ...prev]);
+    let body;
+    if (isFormData) {
+      body = formData;
+    } else {
+      headers['Content-Type'] = 'application/json';
+      body = JSON.stringify(formData);
     }
 
-    showToast(`Emergency reported successfully! ID: ${createdIncident.id}`, 'success');
+    const res = await fetch(`${API_BASE_URL}/incidents`, {
+      method: 'POST',
+      headers,
+      body
+    });
+
+    if (res.status === 401) {
+      handleUnauthorized();
+      throw new Error('Session expired. Please sign in again.');
+    }
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      const errorMsg = data.error || (data.details ? data.details.map((d) => d.message).join('. ') : 'Failed to submit report');
+      showToast(errorMsg, 'danger');
+      throw new Error(errorMsg);
+    }
+
+    const createdIncident = data.incident;
+    setIncidents((prev) => [createdIncident, ...prev.filter((i) => i.id !== createdIncident.id)]);
+    showToast(`Emergency reported successfully! Reference ID: ${createdIncident.id}`, 'success');
     return createdIncident;
   };
 
-  // 6. Admin Assigns Rescue Team (PATCH /api/incidents/:id/assign)
+  // 5. Admin Assigns Rescue Team (PATCH /api/incidents/:id/assign)
   const assignTeam = async (incidentId, teamId) => {
-    const team = rescueTeams.find((t) => t.id === teamId);
-    if (!team) return false;
-
-    // Send assignment to Backend MongoDB API
     try {
       const res = await fetch(`${API_BASE_URL}/incidents/${incidentId}/assign`, {
         method: 'PATCH',
         headers: getHeaders(),
-        body: JSON.stringify({ teamId, note: `Admin Rahul Patil assigned rescue team: ${team.name}` })
+        body: JSON.stringify({ teamId })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        // Update local state with DB response
-        setIncidents((prev) =>
-          prev.map((inc) => (inc.id === incidentId ? data.incident : inc))
-        );
+      if (res.status === 401) {
+        handleUnauthorized();
+        return false;
       }
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const errorMsg = data.error || 'Failed to assign rescue squad';
+        showToast(errorMsg, 'danger');
+        return false;
+      }
+
+      // Update incident and team list from live server response
+      setIncidents((prev) =>
+        prev.map((inc) => (inc.id === incidentId ? data.incident : inc))
+      );
+      await fetchTeams();
+      setSelectedIncident((prev) =>
+        prev && prev.id === incidentId ? data.incident : prev
+      );
+
+      showToast(`Assigned squad to incident #${incidentId}`, 'success');
+      return true;
     } catch (err) {
-      console.warn('Backend assign fallback to local:', err.message);
+      showToast(err.message || 'Error assigning squad.', 'danger');
+      return false;
     }
-
-    // Local optimistic update
-    const now = new Date().toISOString();
-    setIncidents((prev) =>
-      prev.map((inc) => {
-        if (inc.id === incidentId) {
-          const updatedTimeline = [
-            ...(inc.timeline || []),
-            {
-              status: 'Assigned',
-              time: now,
-              note: `Admin Rahul Patil assigned rescue team: ${team.name}`
-            }
-          ];
-          return {
-            ...inc,
-            assignedTeamId: team.id,
-            assignedTeamName: team.name,
-            status: inc.status === 'Reported' ? 'Assigned' : inc.status,
-            updatedAt: now,
-            timeline: updatedTimeline
-          };
-        }
-        return inc;
-      })
-    );
-
-    // Update Rescue Team status to Assigned
-    setRescueTeams((prev) =>
-      prev.map((t) => (t.id === teamId ? { ...t, status: 'Assigned' } : t))
-    );
-
-    // Automatically set activeTeamId so the Rescue Team Dashboard immediately points to this team!
-    setActiveTeamId(team.id);
-
-    // Update selectedIncident in-place if modal is open
-    setSelectedIncident((prev) =>
-      prev && prev.id === incidentId
-        ? {
-            ...prev,
-            assignedTeamId: team.id,
-            assignedTeamName: team.name,
-            status: prev.status === 'Reported' ? 'Assigned' : prev.status,
-            updatedAt: now,
-            timeline: [
-              ...(prev.timeline || []),
-              {
-                status: 'Assigned',
-                time: now,
-                note: `Admin Rahul Patil assigned rescue team: ${team.name}`
-              }
-            ]
-          }
-        : prev
-    );
-
-    showToast(`Assigned ${team.name} to ${incidentId}`, 'success');
-    return true;
   };
 
-  // 7. Rescue Team Updates Status (PATCH /api/incidents/:id/status)
+  // 6. Rescue Team Updates Status (PATCH /api/incidents/:id/status)
   const updateIncidentStatus = async (incidentId, newStatus, note = '') => {
-    // Send status update to Backend MongoDB API
     try {
       const res = await fetch(`${API_BASE_URL}/incidents/${incidentId}/status`, {
         method: 'PATCH',
@@ -555,86 +529,129 @@ export const AppProvider = ({ children }) => {
         body: JSON.stringify({ status: newStatus, note })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        setIncidents((prev) =>
-          prev.map((inc) => (inc.id === incidentId ? data.incident : inc))
-        );
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
       }
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const errorMsg = data.error || 'Failed to update status';
+        showToast(errorMsg, 'danger');
+        throw new Error(errorMsg);
+      }
+
+      setIncidents((prev) =>
+        prev.map((inc) => (inc.id === incidentId ? data.incident : inc))
+      );
+      await fetchTeams();
+      setSelectedIncident((prev) =>
+        prev && prev.id === incidentId ? data.incident : prev
+      );
+
+      showToast(`Incident #${incidentId} status updated to: ${newStatus}`, 'info');
     } catch (err) {
-      console.warn('Backend status update fallback to local:', err.message);
+      showToast(err.message || 'Status update failed.', 'danger');
+      throw err;
     }
-
-    // Local optimistic update
-    const now = new Date().toISOString();
-    setIncidents((prev) =>
-      prev.map((inc) => {
-        if (inc.id === incidentId) {
-          const customNote = note || `Status updated to ${newStatus} by rescue squad`;
-          const updatedTimeline = [
-            ...(inc.timeline || []),
-            { status: newStatus, time: now, note: customNote }
-          ];
-
-          return {
-            ...inc,
-            status: newStatus,
-            updatedAt: now,
-            timeline: updatedTimeline
-          };
-        }
-        return inc;
-      })
-    );
-
-    // If Completed or Resolved, free up the squad back to Available
-    if (newStatus === 'Completed' || newStatus === 'Resolved') {
-      const targetInc = incidents.find((i) => i.id === incidentId);
-      if (targetInc && targetInc.assignedTeamId) {
-        setRescueTeams((teams) =>
-          teams.map((t) =>
-            t.id === targetInc.assignedTeamId ? { ...t, status: 'Available' } : t
-          )
-        );
-      }
-    } else if (['On the Way', 'Reached', 'In Progress'].includes(newStatus)) {
-      const targetInc = incidents.find((i) => i.id === incidentId);
-      if (targetInc && targetInc.assignedTeamId) {
-        setRescueTeams((teams) =>
-          teams.map((t) =>
-            t.id === targetInc.assignedTeamId ? { ...t, status: 'In Progress' } : t
-          )
-        );
-      }
-    }
-
-    // Also update selectedIncident in-place if open
-    setSelectedIncident((prev) =>
-      prev && prev.id === incidentId
-        ? {
-            ...prev,
-            status: newStatus,
-            updatedAt: now,
-            timeline: [
-              ...(prev.timeline || []),
-              { status: newStatus, time: now, note: note || `Status updated to ${newStatus}` }
-            ]
-          }
-        : prev
-    );
-
-    showToast(`Incident #${incidentId} status updated to: ${newStatus}`, 'info');
   };
 
-  // Reset demo data
-  const resetDemoData = () => {
-    setIncidents(defaultIncidents);
-    setRescueTeams(defaultTeams);
-    setActiveTeamId('PERT-01');
-    localStorage.setItem(STORAGE_INCIDENTS_KEY, JSON.stringify(defaultIncidents));
-    localStorage.setItem(STORAGE_TEAMS_KEY, JSON.stringify(defaultTeams));
-    localStorage.setItem(STORAGE_ACTIVE_TEAM_KEY, 'PERT-01');
-    showToast('Reset to 2 clean Pune test incidents', 'info');
+  // 7. Admin: Update User Status (Activate/Deactivate)
+  const updateUserStatus = async (userId, isActive) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/status`, {
+        method: 'PATCH',
+        headers: getHeaders(),
+        body: JSON.stringify({ isActive })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to update user status.');
+      showToast(data.message || 'Status updated.', 'success');
+      await fetchUsers();
+      await fetchAuditLogs();
+      return true;
+    } catch (err) {
+      showToast(err.message, 'danger');
+      return false;
+    }
+  };
+
+  // 8. Admin: Reset User Password
+  const resetUserPassword = async (userId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/reset-password`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to reset password.');
+      showToast('Password reset successfully.', 'success');
+      await fetchAuditLogs();
+      return data;
+    } catch (err) {
+      showToast(err.message, 'danger');
+      throw err;
+    }
+  };
+
+  // 9. Admin: Update User Profile
+  const updateUserProfile = async (userId, updateData) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/users/${userId}`, {
+        method: 'PATCH',
+        headers: getHeaders(),
+        body: JSON.stringify(updateData)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to update user profile.');
+      showToast('User profile updated successfully.', 'success');
+      await fetchUsers();
+      await fetchAuditLogs();
+      return true;
+    } catch (err) {
+      showToast(err.message, 'danger');
+      return false;
+    }
+  };
+
+  // 10. Admin: Delete User
+  const deleteUser = async (userId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to delete user.');
+      showToast(data.message || 'User deleted.', 'success');
+      await fetchUsers();
+      await fetchAuditLogs();
+      return true;
+    } catch (err) {
+      showToast(err.message, 'danger');
+      return false;
+    }
+  };
+
+  // 11. Admin: Create Rescue Squad User
+  const createRescueUser = async (formData) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/rescue-users`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(formData)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to create rescue squad user.');
+      showToast(data.message || 'Rescue user created.', 'success');
+      await fetchUsers();
+      await fetchAuditLogs();
+      return true;
+    } catch (err) {
+      showToast(err.message, 'danger');
+      return false;
+    }
   };
 
   return (
@@ -642,13 +659,14 @@ export const AppProvider = ({ children }) => {
       value={{
         activePage,
         navigateTo,
+        redirectAfterLogin,
+        setRedirectAfterLogin,
         currentUser,
         setCurrentUser,
         authToken,
         login,
         logout,
         registerCitizen,
-        switchRole,
         incidents,
         rescueTeams,
         reportEmergency,
@@ -660,11 +678,27 @@ export const AppProvider = ({ children }) => {
         setSelectedIncident,
         toast,
         showToast,
-        resetDemoData,
         fetchIncidents,
         fetchTeams,
         registeredUsers,
-        fetchUsers
+        fetchUsers,
+        auditLogs,
+        fetchAuditLogs,
+        updateUserStatus,
+        resetUserPassword,
+        updateUserProfile,
+        deleteUser,
+        createRescueUser,
+        lastUpdated,
+        isRefreshing,
+        refreshAllData,
+        notifications,
+        unreadNotificationsCount,
+        markAllNotificationsAsRead,
+        markNotificationAsRead,
+        showProfileModal,
+        setShowProfileModal,
+        changePassword
       }}
     >
       {children}
@@ -673,3 +707,4 @@ export const AppProvider = ({ children }) => {
 };
 
 export const useApp = () => useContext(AppContext);
+export default AppContext;
