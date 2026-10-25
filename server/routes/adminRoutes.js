@@ -1,5 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
+import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Incident from '../models/Incident.js';
 import RescueTeam from '../models/RescueTeam.js';
@@ -8,6 +9,8 @@ import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 import { createRescueUserValidator, updateUserStatusValidator } from '../middleware/validation.js';
 
 const router = express.Router();
+
+const isValidObjectId = (id) => typeof id === 'string' && mongoose.Types.ObjectId.isValid(id.trim());
 
 // All admin routes require authentication and admin role
 router.use(authenticateToken, authorizeRoles('admin'));
@@ -115,6 +118,9 @@ router.get('/users', async (req, res) => {
 // GET /api/admin/users/:id - User details with incident history
 router.get('/users/:id', async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid user ID format.' });
+    }
     const user = await User.findById(req.params.id).select('-password');
     if (!user) {
       return res.status(404).json({ error: 'User not found.' });
@@ -138,6 +144,9 @@ router.get('/users/:id', async (req, res) => {
 // PATCH /api/admin/users/:id - Edit user profile info
 router.patch('/users/:id', async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid user ID format.' });
+    }
     const { name, phone, email } = req.body;
     const user = await User.findById(req.params.id);
     if (!user) {
@@ -199,6 +208,9 @@ router.patch('/users/:id', async (req, res) => {
 // PATCH /api/admin/users/:id/status - Activate or Deactivate user
 router.patch('/users/:id/status', updateUserStatusValidator, async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid user ID format.' });
+    }
     const { isActive } = req.body;
 
     const targetUser = await User.findById(req.params.id);
@@ -254,6 +266,9 @@ router.patch('/users/:id/status', updateUserStatusValidator, async (req, res) =>
 // POST /api/admin/users/:id/reset-password - Generate temporary password and set mustChangePassword
 router.post('/users/:id/reset-password', async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid user ID format.' });
+    }
     const targetUser = await User.findById(req.params.id);
     if (!targetUser) {
       return res.status(404).json({ error: 'User not found.' });
@@ -291,6 +306,9 @@ router.post('/users/:id/reset-password', async (req, res) => {
 // DELETE /api/admin/users/:id - Delete user account with safety checks
 router.delete('/users/:id', async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid user ID format.' });
+    }
     const targetUser = await User.findById(req.params.id);
     if (!targetUser) {
       return res.status(404).json({ error: 'User not found.' });

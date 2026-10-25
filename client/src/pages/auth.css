@@ -1,0 +1,515 @@
+/* ResQNet Authentication Stylesheet
+ * Split-screen, accessible, WCAG AA compliant, mobile-first design system.
+ */
+
+:root {
+  --auth-navy-900: #0a192f;
+  --auth-navy-800: #0f172a;
+  --auth-navy-700: #1e293b;
+  --auth-red-600: #dc2626;
+  --auth-red-700: #b91c1c;
+  --auth-red-50: #fef2f2;
+  --auth-slate-50: #f8fafc;
+  --auth-slate-100: #f1f5f9;
+  --auth-slate-200: #e2e8f0;
+  --auth-slate-300: #cbd5e1;
+  --auth-slate-500: #64748b;
+  --auth-slate-600: #475569;
+  --auth-slate-700: #334155;
+  --auth-slate-900: #0f172a;
+  --auth-radius: 8px;
+  --auth-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+  --auth-transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Page Root Wrapper */
+.resq-auth-page {
+  min-height: 100vh;
+  display: flex;
+  background-color: var(--auth-slate-50);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--auth-slate-900);
+}
+
+/* Left Hero Panel (Desktop) */
+.resq-auth-hero-panel {
+  position: relative;
+  width: 45%;
+  min-height: 100vh;
+  background-color: var(--auth-navy-900);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 3rem;
+  overflow: hidden;
+}
+
+@media (max-width: 991px) {
+  .resq-auth-hero-panel {
+    display: none !important;
+  }
+}
+
+.resq-auth-bg-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  z-index: 1;
+}
+
+.resq-auth-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(10, 25, 47, 0.92) 0%,
+    rgba(10, 25, 47, 0.78) 50%,
+    rgba(15, 23, 42, 0.85) 100%
+  );
+  z-index: 2;
+}
+
+.resq-auth-hero-content {
+  position: relative;
+  z-index: 3;
+}
+
+.resq-auth-hero-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+  color: #ffffff;
+}
+
+.resq-auth-brand-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background-color: var(--auth-red-600);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35);
+}
+
+.resq-auth-hero-headline {
+  font-size: 2.25rem;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  color: #ffffff;
+  margin-top: 1.5rem;
+  margin-bottom: 0.875rem;
+}
+
+.resq-auth-hero-sub {
+  font-size: 1rem;
+  color: #cbd5e1;
+  line-height: 1.55;
+  max-width: 460px;
+}
+
+/* Trust Points Card */
+.resq-trust-box {
+  background-color: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--auth-radius);
+  backdrop-filter: blur(10px);
+  padding: 1.25rem;
+}
+
+.resq-trust-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.875rem;
+}
+
+.resq-trust-item:last-child {
+  margin-bottom: 0;
+}
+
+.resq-trust-icon {
+  color: #ef4444;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+/* Right Form Panel */
+.resq-auth-form-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 2rem 1.5rem;
+  overflow-y: auto;
+  min-height: 100vh;
+}
+
+@media (min-width: 992px) {
+  .resq-auth-form-panel {
+    padding: 3rem 4rem;
+  }
+}
+
+.resq-auth-card-container {
+  max-width: 480px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Top Back Navigation */
+.resq-auth-top-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+}
+
+.resq-back-home-link {
+  color: var(--auth-slate-600);
+  font-weight: 500;
+  font-size: 0.875rem;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: var(--auth-transition);
+}
+
+.resq-back-home-link:hover {
+  color: var(--auth-red-600);
+}
+
+/* Mobile Header Banner */
+.resq-mobile-auth-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Auth Segmented Tabs */
+.resq-auth-tabs {
+  display: flex;
+  background-color: var(--auth-slate-100);
+  padding: 4px;
+  border-radius: var(--auth-radius);
+  border: 1px solid var(--auth-slate-200);
+  margin-bottom: 1.75rem;
+}
+
+.resq-auth-tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 0.55rem 1rem;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--auth-slate-600);
+  cursor: pointer;
+  transition: var(--auth-transition);
+  text-align: center;
+}
+
+.resq-auth-tab-btn:hover {
+  color: var(--auth-navy-900);
+}
+
+.resq-auth-tab-btn.active {
+  background-color: #ffffff;
+  color: var(--auth-navy-900);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+}
+
+/* Form Styles */
+.resq-form-card {
+  background-color: #ffffff;
+  border: 1px solid var(--auth-slate-200);
+  border-radius: var(--auth-radius);
+  padding: 2rem;
+  box-shadow: var(--auth-shadow);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+@media (max-width: 575px) {
+  .resq-form-card {
+    padding: 1.5rem;
+    border-radius: 6px;
+  }
+}
+
+.resq-field-group {
+  margin-bottom: 1.25rem;
+}
+
+.resq-field-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--auth-slate-700);
+  margin-bottom: 0.35rem;
+}
+
+.resq-required-star {
+  color: var(--auth-red-600);
+  margin-left: 2px;
+}
+
+/* Input Fields */
+.resq-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.9375rem;
+  color: var(--auth-slate-900);
+  background-color: #ffffff;
+  border: 1px solid var(--auth-slate-300);
+  border-radius: 6px;
+  transition: var(--auth-transition);
+  font-family: inherit;
+}
+
+.resq-input:hover {
+  border-color: var(--auth-slate-400);
+}
+
+.resq-input:focus {
+  outline: none;
+  border-color: var(--auth-red-600);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+}
+
+.resq-input.is-invalid {
+  border-color: var(--auth-red-600);
+  background-color: #fffafa;
+}
+
+.resq-input.is-invalid:focus {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
+}
+
+/* Password Input Wrapper with Eye and CapsLock */
+.resq-password-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.resq-password-wrap .resq-input {
+  padding-right: 2.75rem;
+}
+
+.resq-eye-toggle {
+  position: absolute;
+  right: 0.6rem;
+  background: transparent;
+  border: none;
+  color: var(--auth-slate-500);
+  padding: 0.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.15s ease;
+}
+
+.resq-eye-toggle:hover {
+  color: var(--auth-slate-900);
+}
+
+.resq-eye-toggle:focus-visible {
+  outline: 2px solid var(--auth-red-600);
+}
+
+/* CapsLock Warning */
+.resq-caps-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #b45309;
+  background-color: #fef3c7;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #fde68a;
+}
+
+/* Field Error & Helper Text */
+.resq-field-error {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--auth-red-600);
+  font-size: 0.78rem;
+  font-weight: 500;
+  margin-top: 0.3rem;
+}
+
+.resq-field-hint {
+  font-size: 0.75rem;
+  color: var(--auth-slate-500);
+  margin-top: 0.3rem;
+}
+
+/* Password Strength Bar & Checklist */
+.resq-strength-box {
+  margin-top: 0.6rem;
+  padding: 0.75rem;
+  background-color: var(--auth-slate-50);
+  border: 1px solid var(--auth-slate-200);
+  border-radius: 6px;
+}
+
+.resq-strength-bar {
+  height: 5px;
+  background-color: var(--auth-slate-200);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.resq-strength-bar-fill {
+  height: 100%;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.resq-strength-checklist {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.75rem;
+}
+
+.resq-strength-check-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--auth-slate-500);
+  transition: color 0.2s ease;
+}
+
+.resq-strength-check-item.met {
+  color: #16a34a;
+  font-weight: 600;
+}
+
+/* Primary Submit Button */
+.btn-auth-submit {
+  width: 100%;
+  min-height: 44px;
+  background-color: var(--auth-red-600);
+  border: 1px solid var(--auth-red-700);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: var(--auth-transition);
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.2);
+}
+
+.btn-auth-submit:hover:not(:disabled) {
+  background-color: var(--auth-red-700);
+  box-shadow: 0 4px 10px rgba(220, 38, 38, 0.3);
+  transform: translateY(-1px);
+}
+
+.btn-auth-submit:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Shake Animation on Failure */
+.resq-shake {
+  animation: resq-auth-shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes resq-auth-shake {
+  10%, 90% {
+    transform: translateX(-2px);
+  }
+  20%, 80% {
+    transform: translateX(4px);
+  }
+  30%, 50%, 70% {
+    transform: translateX(-5px);
+  }
+  40%, 60% {
+    transform: translateX(5px);
+  }
+}
+
+/* Success Card */
+.resq-auth-success-card {
+  background-color: #ffffff;
+  border: 1px solid var(--auth-slate-200);
+  border-radius: var(--auth-radius);
+  padding: 2.5rem 2rem;
+  text-align: center;
+  box-shadow: var(--auth-shadow);
+}
+
+.resq-success-icon-wrap {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background-color: #dcfce7;
+  color: #16a34a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1.25rem auto;
+}
+
+/* Hotline Footer in Auth Panel */
+.resq-auth-footer {
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--auth-slate-200);
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--auth-slate-600);
+}
+
+.resq-auth-footer a {
+  color: var(--auth-red-600);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.resq-auth-footer a:hover {
+  text-decoration: underline;
+}
+
+/* Accessibility & Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .resq-shake {
+    animation: none !important;
+  }
+  .resq-form-card,
+  .btn-auth-submit,
+  .resq-strength-bar-fill {
+    transition: none !important;
+  }
+}

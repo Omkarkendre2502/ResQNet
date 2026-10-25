@@ -6,6 +6,7 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 import 'leaflet/dist/leaflet.css';
 import './index.css';
+import './pages/dashboard.css';
 
 import { AppProvider } from './context/AppContext';
 import App from './App';

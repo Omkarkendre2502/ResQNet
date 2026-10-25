@@ -74,7 +74,14 @@ export const AppProvider = ({ children }) => {
   const [lastUpdated, setLastUpdated] = useState(() => Date.now());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [readNotificationIds, setReadNotificationIds] = useState(() => new Set());
+  const [readNotificationIds, setReadNotificationIds] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem('resqnet_read_notifications');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch (e) {
+      return new Set();
+    }
+  });
 
   // Toast notification
   const showToast = (message, type = 'success') => {
@@ -263,13 +270,28 @@ export const AppProvider = ({ children }) => {
     }
   }, [authToken, currentUser?.role, fetchIncidents, fetchTeams, fetchUsers, fetchAuditLogs]);
 
-  // 20-Second Background Auto-Polling
+  // 20-Second Background Auto-Polling (pauses on hidden tab, refreshes immediately when visible)
   useEffect(() => {
     if (!authToken) return;
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        refreshAllData();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     const interval = setInterval(() => {
-      refreshAllData();
+      if (!document.hidden) {
+        refreshAllData();
+      }
     }, 20000);
-    return () => clearInterval(interval);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [authToken, refreshAllData]);
 
   // Derived Notifications from active and recent incidents
@@ -303,11 +325,22 @@ export const AppProvider = ({ children }) => {
   ).length;
 
   const markAllNotificationsAsRead = () => {
-    setReadNotificationIds(new Set(notifications.map((n) => n.id)));
+    const allIds = notifications.map((n) => n.id);
+    const newSet = new Set(allIds);
+    setReadNotificationIds(newSet);
+    try {
+      sessionStorage.setItem('resqnet_read_notifications', JSON.stringify(Array.from(newSet)));
+    } catch (e) {}
   };
 
   const markNotificationAsRead = (id) => {
-    setReadNotificationIds((prev) => new Set([...prev, id]));
+    setReadNotificationIds((prev) => {
+      const next = new Set([...prev, id]);
+      try {
+        sessionStorage.setItem('resqnet_read_notifications', JSON.stringify(Array.from(next)));
+      } catch (e) {}
+      return next;
+    });
   };
 
   // Change Password for Logged-In User
@@ -379,6 +412,12 @@ export const AppProvider = ({ children }) => {
     }
 
     showToast(`Welcome back, ${data.user.name}!`, 'success');
+
+    // If user must change password, remain on password change view before routing to dashboard
+    if (data.user.mustChangePassword) {
+      showToast('Please set a new password to continue.', 'warning');
+      return { success: true, user: data.user, mustChangePassword: true };
+    }
 
     // Route to intended destination if remembered, otherwise to role dashboard
     if (redirectAfterLogin) {

@@ -127,6 +127,30 @@ export function AppContent() {
     return <HomePage />;
   };
 
+  // Full-width edge-to-edge layout for public Home landing page and Login/Register portal
+  if (activePage === 'home' || activePage === 'login') {
+    return (
+      <div className={activePage === 'home' ? 'resq-home-page-container' : 'resq-auth-page-container'}>
+        {renderActivePage()}
+
+        {/* Modals & Overlays */}
+        <IncidentDetailModal
+          onOpenAssignModal={(inc) => setAssignTargetIncident(inc)}
+        />
+
+        {assignTargetIncident && (
+          <AssignTeamModal
+            incident={assignTargetIncident}
+            onClose={() => setAssignTargetIncident(null)}
+          />
+        )}
+
+        <UserProfileModal />
+        <Toast />
+      </div>
+    );
+  }
+
   return (
     <div className="app-container">
       {/* Sidebar Navigation */}
@@ -136,7 +160,7 @@ export function AppContent() {
       <div className="main-content">
         <Navbar setMobileOpen={setMobileOpen} />
 
-        <main className="flex-grow-1">{renderActivePage()}</main>
+        <main className="flex-grow-1" style={{ minWidth: 0 }}>{renderActivePage()}</main>
 
         {/* Footer */}
         <footer className="py-3 px-4 bg-white border-top text-center text-muted small">

@@ -1,75 +1,115 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
+import { useDebounce } from '../hooks/useDebounce';
+import { formatRelativeTime } from '../hooks/useRelativeTime';
 import {
-  ShieldCheck,
+  Shield,
   Siren,
   Ambulance,
-  CheckCircle,
-  Eye,
-  UserPlus,
-  MapPin,
-  ClipboardList,
+  CheckCircle2,
+  Users,
+  AlertTriangle,
   Flame,
   Waves,
   Car,
   Building2,
-  AlertTriangle,
-  Users,
+  UserPlus,
   Phone,
-  RefreshCw,
   Mail,
-  UserCheck,
   Calendar,
   Key,
-  UserX,
   Trash2,
   Edit3,
-  ShieldAlert,
   Activity,
   Copy,
   Check,
   Clock,
   Search,
-  Lock,
   Download,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown
+  MapPin,
+  Eye,
+  RotateCcw,
+  UserCheck,
+  UserX,
+  Truck,
+  Map as MapIcon,
+  HelpCircle,
+  FileText
 } from 'lucide-react';
+import PageHeader from '../components/dashboard/PageHeader';
+import StatCard from '../components/dashboard/StatCard';
+import StatusBadge from '../components/dashboard/StatusBadge';
+import SeverityBadge from '../components/dashboard/SeverityBadge';
+import DataTable from '../components/dashboard/DataTable';
+import FilterBar from '../components/dashboard/FilterBar';
+import ChartSection from '../components/dashboard/ChartSection';
+import ConfirmModal from '../components/dashboard/ConfirmModal';
+import { IncidentMap } from '../components/IncidentMap';
+import { AssignTeamModal } from '../components/AssignTeamModal';
 
+/**
+ * Control Center Admin Dashboard (Pune Zone).
+ * Provides unified incident dispatch, real-time telemetry, team readiness monitoring,
+ * user role management with safeguards, and audit logging.
+ */
 export const AdminDashboard = ({ onOpenAssignModal }) => {
   const {
-    incidents,
-    rescueTeams,
+    incidents = [],
+    rescueTeams = [],
     setSelectedIncident,
-    registeredUsers,
+    registeredUsers = [],
     fetchUsers,
     currentUser,
-    auditLogs,
+    auditLogs = [],
     fetchAuditLogs,
     updateUserStatus,
     resetUserPassword,
     updateUserProfile,
     deleteUser,
-    createRescueUser
+    createRescueUser,
+    showToast
   } = useApp();
 
-  const [filterSeverity, setFilterSeverity] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [activeTab, setActiveTab] = useState('incidents'); // 'incidents' | 'teams' | 'users' | 'activity'
-  const [usersLoading, setUsersLoading] = useState(false);
-  const [logsLoading, setLogsLoading] = useState(false);
+  // Active Tab: 'incidents' | 'teams' | 'users' | 'activity' | 'map'
+  const [activeTab, setActiveTab] = useState('incidents');
+  const [highlightedIncidentId, setHighlightedIncidentId] = useState(null);
+
+  // Local Assign Modal Target
+  const [localAssignTarget, setLocalAssignTarget] = useState(null);
+
+  // Incidents Filter State
+  const [incidentSearch, setIncidentSearch] = useState('');
+  const [severityFilter, setSeverityFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [assignmentFilter, setAssignmentFilter] = useState('all'); // 'all' | 'assigned' | 'unassigned'
+  const [dateRangeFilter, setDateRangeFilter] = useState('all'); // 'all' | 'today' | '7days'
+  const [selectedTeamFilter, setSelectedTeamFilter] = useState('all');
+
+  const [sortField, setSortField] = useState('reportedAt');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const debouncedSearch = useDebounce(incidentSearch, 300);
 
   // User Management State
   const [userSearch, setUserSearch] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState('all');
   const [userStatusFilter, setUserStatusFilter] = useState('all');
+  const [userPage, setUserPage] = useState(1);
+  const debouncedUserSearch = useDebounce(userSearch, 300);
+
+  // Activity Log State
+  const [logActionFilter, setLogActionFilter] = useState('all');
+  const [logSearch, setLogSearch] = useState('');
+  const [logPage, setLogPage] = useState(1);
 
   // Modals State
   const [editingUser, setEditingUser] = useState(null);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
+  const [isEditingUserSubmitting, setIsEditingUserSubmitting] = useState(false);
 
   const [tempPasswordResult, setTempPasswordResult] = useState(null);
   const [copiedPass, setCopiedPass] = useState(false);
@@ -83,113 +123,260 @@ export const AdminDashboard = ({ onOpenAssignModal }) => {
     phone: ''
   });
   const [addRescueError, setAddRescueError] = useState('');
+  const [isCreatingRescue, setIsCreatingRescue] = useState(false);
 
   const [confirmStatusUser, setConfirmStatusUser] = useState(null);
+  const [isStatusSubmitting, setIsStatusSubmitting] = useState(false);
+
   const [confirmDeleteUser, setConfirmDeleteUser] = useState(null);
+  const [isDeleteSubmitting, setIsDeleteSubmitting] = useState(false);
 
   // Sync data on tab change
   useEffect(() => {
     if (activeTab === 'users') {
-      setUsersLoading(true);
-      fetchUsers().finally(() => setUsersLoading(false));
+      fetchUsers();
     } else if (activeTab === 'activity') {
-      setLogsLoading(true);
-      fetchAuditLogs().finally(() => setLogsLoading(false));
+      fetchAuditLogs();
     }
   }, [activeTab, fetchUsers, fetchAuditLogs]);
 
-  // Summary Metrics
-  const totalIncidents = incidents.length;
-  const criticalIncidents = incidents.filter(
-    (i) => i.severity === 'Critical' && i.status !== 'Completed' && i.status !== 'Resolved'
-  ).length;
-  const availableRescueTeams = rescueTeams.filter((t) => t.status === 'Available').length;
-  const resolvedIncidents = incidents.filter(
-    (i) => i.status === 'Completed' || i.status === 'Resolved'
-  ).length;
-
-  // Incidents Sorting & CSV State
-  const [incidentSortField, setIncidentSortField] = useState('reportedAt');
-  const [incidentSortOrder, setIncidentSortOrder] = useState('desc');
-
-  const handleSort = (field) => {
-    if (incidentSortField === field) {
-      setIncidentSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setIncidentSortField(field);
-      setIncidentSortOrder('asc');
+  // Type icon helper
+  const getTypeIcon = (type) => {
+    switch (type?.toLowerCase()) {
+      case 'fire':
+        return <Flame size={15} className="text-danger flex-shrink-0" />;
+      case 'flood':
+        return <Waves size={15} className="text-primary flex-shrink-0" />;
+      case 'accident':
+        return <Car size={15} className="text-warning flex-shrink-0" />;
+      case 'building collapse':
+        return <Building2 size={15} className="text-danger flex-shrink-0" />;
+      default:
+        return <AlertTriangle size={15} className="text-secondary flex-shrink-0" />;
     }
   };
 
-  const renderSortIndicator = (field) => {
-    if (incidentSortField !== field) {
-      return <ArrowUpDown size={12} className="text-muted ms-1 opacity-50" />;
-    }
-    return incidentSortOrder === 'asc' ? (
-      <ArrowUp size={12} className="text-danger ms-1" />
-    ) : (
-      <ArrowDown size={12} className="text-danger ms-1" />
+  // Metrics computation for Stat Cards
+  const metrics = useMemo(() => {
+    const now = Date.now();
+    let total = incidents.length;
+    let criticalOpen = 0;
+    let unassigned = 0;
+    let completedToday = 0;
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const todayMs = startOfToday.getTime();
+
+    incidents.forEach((inc) => {
+      const isDone = inc.status === 'Completed' || inc.status === 'Resolved';
+      if (isDone) {
+        const repDate = new Date(inc.reportedAt || 0).getTime();
+        if (repDate >= todayMs) completedToday++;
+      } else {
+        if (inc.severity === 'Critical') criticalOpen++;
+        if (!inc.assignedTeamId && inc.status === 'Reported') unassigned++;
+      }
+    });
+
+    const availableTeams = rescueTeams.filter((t) => t.status === 'Available').length;
+    const registeredCitizens = registeredUsers.filter((u) => u.role === 'citizen').length;
+
+    return {
+      total,
+      criticalOpen,
+      unassigned,
+      availableTeams,
+      totalTeams: rescueTeams.length,
+      completedToday,
+      registeredCitizens
+    };
+  }, [incidents, rescueTeams, registeredUsers]);
+
+  // Admin Safeguard Helpers:
+  // Cannot delete or disable own account or last active admin
+  const activeAdminsCount = useMemo(() => {
+    return registeredUsers.filter(
+      (u) => u.role === 'admin' && u.isActive !== false
+    ).length;
+  }, [registeredUsers]);
+
+  const isSelf = (user) => {
+    if (!user || !currentUser) return false;
+    const uId = user._id || user.id;
+    const cId = currentUser._id || currentUser.id;
+    return (
+      (uId && cId && String(uId) === String(cId)) ||
+      (user.email && currentUser.email && user.email.toLowerCase() === currentUser.email.toLowerCase())
     );
   };
 
-  // Filtered Incidents
-  const filteredIncidents = incidents.filter((inc) => {
-    if (filterSeverity !== 'all' && inc.severity.toLowerCase() !== filterSeverity.toLowerCase()) {
-      return false;
-    }
-    const isCompleted = inc.status === 'Completed' || inc.status === 'Resolved';
-    if (filterStatus === 'active' && isCompleted) return false;
-    if (filterStatus === 'resolved' && !isCompleted) return false;
-    return true;
-  });
+  const isLastAdmin = (user) => {
+    return user.role === 'admin' && activeAdminsCount <= 1;
+  };
 
-  const severityWeight = { Critical: 4, High: 3, Medium: 2, Low: 1 };
+  // Filtered incidents
+  const filteredIncidents = useMemo(() => {
+    const now = Date.now();
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const todayMs = startOfToday.getTime();
+    const sevenDaysAgoMs = now - 7 * 24 * 60 * 60 * 1000;
 
-  const sortedIncidents = [...filteredIncidents].sort((a, b) => {
-    let comp = 0;
-    if (incidentSortField === 'id') {
-      comp = String(a.id).localeCompare(String(b.id), undefined, { numeric: true });
-    } else if (incidentSortField === 'severity') {
-      comp = (severityWeight[a.severity] || 0) - (severityWeight[b.severity] || 0);
-    } else if (incidentSortField === 'status') {
-      comp = (a.status || '').localeCompare(b.status || '');
-    } else if (incidentSortField === 'type') {
-      comp = (a.type || '').localeCompare(b.type || '');
-    } else if (incidentSortField === 'location') {
-      comp = (a.location || '').localeCompare(b.location || '');
+    return incidents.filter((inc) => {
+      // Severity
+      if (severityFilter !== 'all' && inc.severity?.toLowerCase() !== severityFilter.toLowerCase()) {
+        return false;
+      }
+
+      // Status
+      if (statusFilter !== 'all') {
+        const isDone = inc.status === 'Completed' || inc.status === 'Resolved';
+        if (statusFilter === 'active' && isDone) return false;
+        if (statusFilter === 'completed' && !isDone) return false;
+        if (
+          statusFilter !== 'active' &&
+          statusFilter !== 'completed' &&
+          inc.status?.toLowerCase() !== statusFilter.toLowerCase()
+        ) {
+          return false;
+        }
+      }
+
+      // Type
+      if (typeFilter !== 'all' && inc.type?.toLowerCase() !== typeFilter.toLowerCase()) {
+        return false;
+      }
+
+      // Assignment
+      if (assignmentFilter === 'assigned' && !inc.assignedTeamId) return false;
+      if (assignmentFilter === 'unassigned' && Boolean(inc.assignedTeamId)) return false;
+
+      // Squad filter
+      if (selectedTeamFilter !== 'all') {
+        const matchesTeamId =
+          inc.assignedTeamId &&
+          String(inc.assignedTeamId).toLowerCase() === String(selectedTeamFilter).toLowerCase();
+        const matchesTeamName =
+          inc.assignedTeamName &&
+          rescueTeams.some(
+            (t) =>
+              t.id === selectedTeamFilter &&
+              t.name.toLowerCase() === inc.assignedTeamName.toLowerCase()
+          );
+        if (!matchesTeamId && !matchesTeamName) return false;
+      }
+
+      // Date Range
+      if (dateRangeFilter !== 'all') {
+        const repTime = new Date(inc.reportedAt || 0).getTime();
+        if (dateRangeFilter === 'today' && repTime < todayMs) return false;
+        if (dateRangeFilter === '7days' && repTime < sevenDaysAgoMs) return false;
+      }
+
+      // Search Query
+      if (debouncedSearch.trim()) {
+        const q = debouncedSearch.toLowerCase().trim();
+        const matchId = inc.id?.toLowerCase().includes(q);
+        const matchLoc = inc.location?.toLowerCase().includes(q);
+        const matchType = inc.type?.toLowerCase().includes(q);
+        const matchTitle = inc.title?.toLowerCase().includes(q);
+        const matchTeam = inc.assignedTeamName?.toLowerCase().includes(q);
+        const matchReporter = inc.reportedBy?.toLowerCase().includes(q);
+        if (!matchId && !matchLoc && !matchType && !matchTitle && !matchTeam && !matchReporter) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [
+    incidents,
+    severityFilter,
+    statusFilter,
+    typeFilter,
+    assignmentFilter,
+    selectedTeamFilter,
+    dateRangeFilter,
+    debouncedSearch,
+    rescueTeams
+  ]);
+
+  // Sorted incidents
+  const sortedIncidents = useMemo(() => {
+    const list = [...filteredIncidents];
+    list.sort((a, b) => {
+      let valA = a[sortField];
+      let valB = b[sortField];
+
+      if (sortField === 'reportedAt') {
+        valA = new Date(valA || 0).getTime();
+        valB = new Date(valB || 0).getTime();
+      } else if (sortField === 'severity') {
+        const weight = { Critical: 4, High: 3, Medium: 2, Low: 1 };
+        valA = weight[a.severity] || 0;
+        valB = weight[b.severity] || 0;
+      } else if (sortField === 'waitingTime') {
+        const now = Date.now();
+        valA = !a.assignedTeamId ? now - new Date(a.reportedAt || 0).getTime() : 0;
+        valB = !b.assignedTeamId ? now - new Date(b.reportedAt || 0).getTime() : 0;
+      } else if (typeof valA === 'string') {
+        valA = valA.toLowerCase();
+        valB = (valB || '').toLowerCase();
+        return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [filteredIncidents, sortField, sortOrder]);
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
     } else {
-      comp = new Date(a.reportedAt || 0) - new Date(b.reportedAt || 0);
+      setSortField(field);
+      setSortOrder('asc');
     }
-    return incidentSortOrder === 'asc' ? comp : -comp;
-  });
+  };
 
-  const exportIncidentsToCSV = () => {
-    if (sortedIncidents.length === 0) return;
+  // Bulk CSV Export
+  const handleExportCSV = () => {
+    if (!sortedIncidents.length) {
+      showToast('No incidents to export matching current filters.', 'warning');
+      return;
+    }
+
     const headers = [
       'Incident ID',
-      'Emergency Type',
+      'Type',
       'Title',
-      'Location',
       'Severity',
       'Status',
+      'Location',
       'People Affected',
       'Assigned Squad',
-      'Reported At',
+      'Reported Time',
       'Reporter Name',
-      'Reporter Phone'
+      'Reporter Phone',
+      'Description'
     ];
-    const rows = sortedIncidents.map((inc) => [
-      `"${inc.id}"`,
-      `"${(inc.type || '').replace(/"/g, '""')}"`,
-      `"${(inc.title || '').replace(/"/g, '""')}"`,
-      `"${(inc.location || '').replace(/"/g, '""')}"`,
-      `"${inc.severity || ''}"`,
-      `"${inc.status || ''}"`,
-      `"${inc.peopleAffected || 0}"`,
-      `"${(inc.assignedTeamName || inc.assignedTeamId || 'Unassigned').replace(/"/g, '""')}"`,
-      `"${inc.reportedAt ? new Date(inc.reportedAt).toISOString() : ''}"`,
-      `"${(inc.reporterName || '').replace(/"/g, '""')}"`,
-      `"${(inc.reporterPhone || '').replace(/"/g, '""')}"`
+
+    const rows = sortedIncidents.map((i) => [
+      `"${i.id || ''}"`,
+      `"${i.type || ''}"`,
+      `"${(i.title || '').replace(/"/g, '""')}"`,
+      `"${i.severity || ''}"`,
+      `"${i.status || ''}"`,
+      `"${(i.location || '').replace(/"/g, '""')}"`,
+      `"${i.peopleAffected || 0}"`,
+      `"${(i.assignedTeamName || 'Unassigned').replace(/"/g, '""')}"`,
+      `"${new Date(i.reportedAt).toLocaleString('en-IN')}"`,
+      `"${(i.reportedBy || '').replace(/"/g, '""')}"`,
+      `"${(i.reporterPhone || '').replace(/"/g, '""')}"`,
+      `"${(i.description || '').replace(/"/g, '""')}"`
     ]);
 
     const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
@@ -197,76 +384,188 @@ export const AdminDashboard = ({ onOpenAssignModal }) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `resqnet_pune_incidents_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `resqnet_pune_dispatch_${Date.now()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    showToast(`Exported ${sortedIncidents.length} incidents to CSV.`, 'success');
   };
 
-  // Filtered Users
-  const filteredUsers = registeredUsers.filter((u) => {
-    if (userRoleFilter !== 'all' && u.role !== userRoleFilter) return false;
-    if (userStatusFilter === 'active' && u.isActive === false) return false;
-    if (userStatusFilter === 'inactive' && u.isActive !== false) return false;
-    if (userSearch.trim()) {
-      const q = userSearch.toLowerCase().trim();
-      const matchName = u.name && u.name.toLowerCase().includes(q);
-      const matchEmail = u.email && u.email.toLowerCase().includes(q);
-      const matchPhone = u.phone && u.phone.includes(q);
-      const matchTeam = u.teamId && u.teamId.toLowerCase().includes(q);
-      if (!matchName && !matchEmail && !matchPhone && !matchTeam) return false;
-    }
-    return true;
-  });
-
-  const getSeverityBadge = (severity) => {
-    switch (severity?.toLowerCase()) {
-      case 'critical':
-        return 'badge-severity-critical';
-      case 'high':
-        return 'badge-severity-high';
-      case 'medium':
-        return 'badge-severity-medium';
-      default:
-        return 'badge-severity-low';
+  // Assign Squad Trigger
+  const triggerAssignModal = (incident) => {
+    if (onOpenAssignModal) {
+      onOpenAssignModal(incident);
+    } else {
+      setLocalAssignTarget(incident);
     }
   };
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'Reported':
-        return 'badge-status-reported';
-      case 'Assigned':
-        return 'badge-status-assigned';
-      case 'In Progress':
-      case 'On the Way':
-      case 'Reached':
-        return 'badge-status-in-progress';
-      case 'Completed':
-      case 'Resolved':
-        return 'badge-status-completed';
-      default:
-        return 'bg-secondary text-white';
-    }
+  const handleSquadAssigned = (incidentId) => {
+    setHighlightedIncidentId(incidentId);
+    showToast(`Squad successfully dispatched to Incident #${incidentId}`, 'success');
+    setTimeout(() => {
+      setHighlightedIncidentId(null);
+    }, 3000);
   };
 
-  const getIncidentIcon = (type) => {
-    switch (type?.toLowerCase()) {
-      case 'fire':
-        return <Flame size={16} className="text-danger" />;
-      case 'flood':
-        return <Waves size={16} className="text-primary" />;
-      case 'accident':
-        return <Car size={16} className="text-warning" />;
-      case 'building collapse':
-        return <Building2 size={16} className="text-danger" />;
-      default:
-        return <AlertTriangle size={16} className="text-secondary" />;
-    }
-  };
+  // Incidents Table Columns
+  const incidentColumns = [
+    {
+      key: 'id',
+      label: 'Incident ID',
+      sortable: true,
+      width: '110px',
+      render: (item) => (
+        <span className="badge bg-dark fw-bold font-monospace py-1 px-2" style={{ fontSize: '0.78rem' }}>
+          {item.id}
+        </span>
+      )
+    },
+    {
+      key: 'type',
+      label: 'Emergency Type',
+      sortable: true,
+      width: '150px',
+      render: (item) => (
+        <div className="d-flex align-items-center gap-1.5">
+          {getTypeIcon(item.type)}
+          <span className="fw-semibold text-dark small">{item.type}</span>
+        </div>
+      )
+    },
+    {
+      key: 'location',
+      label: 'Location / Sector',
+      sortable: true,
+      render: (item) => (
+        <div>
+          <div className="fw-medium text-dark small">{item.location}</div>
+          {item.peopleAffected ? (
+            <div className="text-muted" style={{ fontSize: '0.7rem' }}>
+              {item.peopleAffected} casualties reported
+            </div>
+          ) : null}
+        </div>
+      )
+    },
+    {
+      key: 'severity',
+      label: 'Severity',
+      sortable: true,
+      width: '115px',
+      render: (item) => <SeverityBadge severity={item.severity} size="sm" />
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      sortable: true,
+      width: '130px',
+      render: (item) => <StatusBadge status={item.status} size="sm" />
+    },
+    {
+      key: 'assignedTeamName',
+      label: 'Assigned Squad',
+      sortable: true,
+      width: '160px',
+      render: (item) => {
+        if (item.assignedTeamName) {
+          return (
+            <div className="d-flex align-items-center gap-1 text-primary fw-medium small">
+              <Ambulance size={13} className="text-primary flex-shrink-0" />
+              <span>{item.assignedTeamName}</span>
+            </div>
+          );
+        }
+        return (
+          <span className="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle py-0.5 px-2 small">
+            Unassigned
+          </span>
+        );
+      }
+    },
+    {
+      key: 'waitingTime',
+      label: 'Waiting Time',
+      sortable: true,
+      width: '145px',
+      render: (item) => {
+        const isDone = item.status === 'Completed' || item.status === 'Resolved';
+        if (isDone || item.assignedTeamId) {
+          return <span className="text-muted small">—</span>;
+        }
 
-  // Handlers for User Management
+        const elapsedMs = Date.now() - new Date(item.reportedAt || 0).getTime();
+        const elapsedMinutes = Math.max(0, Math.floor(elapsedMs / (1000 * 60)));
+        const isCriticalOrHigh = item.severity === 'Critical' || item.severity === 'High';
+
+        if (isCriticalOrHigh && elapsedMinutes >= 10) {
+          return (
+            <span
+              className="waiting-time-alert"
+              title={`Critical/High incident unassigned for ${elapsedMinutes} minutes! Immediate dispatch required.`}
+            >
+              <AlertTriangle size={12} />
+              <span>{elapsedMinutes}m (OVERDUE)</span>
+            </span>
+          );
+        }
+
+        return (
+          <span className="text-secondary small font-monospace">
+            {elapsedMinutes < 60 ? `${elapsedMinutes}m waiting` : `${Math.floor(elapsedMinutes / 60)}h ${elapsedMinutes % 60}m`}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'reportedAt',
+      label: 'Reported',
+      sortable: true,
+      width: '120px',
+      render: (item) => {
+        const { relativeTime, fullDate } = formatRelativeTime(item.reportedAt);
+        return (
+          <span className="text-secondary small" title={`Reported: ${fullDate}`}>
+            {relativeTime}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      sortable: false,
+      align: 'end',
+      width: '140px',
+      render: (item) => (
+        <div className="d-inline-flex align-items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary py-1 px-2 small d-inline-flex align-items-center gap-1"
+            onClick={() => setSelectedIncident(item)}
+            title="View Full Incident File"
+          >
+            <Eye size={12} />
+            <span>Details</span>
+          </button>
+          {!item.assignedTeamId && (
+            <button
+              type="button"
+              className="btn btn-sm btn-resq-danger py-1 px-2 small d-inline-flex align-items-center gap-1 fw-semibold"
+              onClick={() => triggerAssignModal(item)}
+              title="Assign Squad to Incident"
+            >
+              <UserPlus size={12} />
+              <span>Assign</span>
+            </button>
+          )}
+        </div>
+      )
+    }
+  ];
+
+  // User Management Handlers
   const handleOpenEditUser = (user) => {
     setEditingUser(user);
     setEditName(user.name || '');
@@ -277,12 +576,17 @@ export const AdminDashboard = ({ onOpenAssignModal }) => {
   const handleSaveEditUser = async (e) => {
     e.preventDefault();
     if (!editingUser) return;
-    const ok = await updateUserProfile(editingUser._id || editingUser.id, {
-      name: editName,
-      phone: editPhone,
-      email: editEmail
-    });
-    if (ok) setEditingUser(null);
+    setIsEditingUserSubmitting(true);
+    try {
+      const ok = await updateUserProfile(editingUser._id || editingUser.id, {
+        name: editName,
+        phone: editPhone,
+        email: editEmail
+      });
+      if (ok) setEditingUser(null);
+    } finally {
+      setIsEditingUserSubmitting(false);
+    }
   };
 
   const handleResetPassword = async (user) => {
@@ -291,7 +595,7 @@ export const AdminDashboard = ({ onOpenAssignModal }) => {
       setTempPasswordResult(res.tempPassword);
       setCopiedPass(false);
     } catch (err) {
-      // toast shown in context
+      // toast in context
     }
   };
 
@@ -303,17 +607,49 @@ export const AdminDashboard = ({ onOpenAssignModal }) => {
     }
   };
 
-  const handleToggleStatus = async () => {
+  const handleConfirmToggleStatus = async () => {
     if (!confirmStatusUser) return;
-    const nextStatus = confirmStatusUser.isActive === false;
-    await updateUserStatus(confirmStatusUser._id || confirmStatusUser.id, nextStatus);
-    setConfirmStatusUser(null);
+    if (isSelf(confirmStatusUser)) {
+      showToast('Security Restriction: You cannot disable your own admin account.', 'danger');
+      setConfirmStatusUser(null);
+      return;
+    }
+    if (isLastAdmin(confirmStatusUser)) {
+      showToast('Security Restriction: Cannot disable the last active administrator.', 'danger');
+      setConfirmStatusUser(null);
+      return;
+    }
+
+    setIsStatusSubmitting(true);
+    try {
+      const nextStatus = confirmStatusUser.isActive === false;
+      await updateUserStatus(confirmStatusUser._id || confirmStatusUser.id, nextStatus);
+      setConfirmStatusUser(null);
+    } finally {
+      setIsStatusSubmitting(false);
+    }
   };
 
-  const handleDeleteUser = async () => {
+  const handleConfirmDeleteUser = async () => {
     if (!confirmDeleteUser) return;
-    await deleteUser(confirmDeleteUser._id || confirmDeleteUser.id);
-    setConfirmDeleteUser(null);
+    if (isSelf(confirmDeleteUser)) {
+      showToast('Security Restriction: You cannot delete your own admin account.', 'danger');
+      setConfirmDeleteUser(null);
+      return;
+    }
+    if (isLastAdmin(confirmDeleteUser)) {
+      showToast('Security Restriction: Cannot delete the last active administrator.', 'danger');
+      setConfirmDeleteUser(null);
+      return;
+    }
+
+    setIsDeleteSubmitting(true);
+    try {
+      await deleteUser(confirmDeleteUser._id || confirmDeleteUser.id);
+      setConfirmDeleteUser(null);
+    } finally {
+      setIsDeleteSubmitting(false);
+    }
   };
 
   const handleCreateRescueSubmit = async (e) => {
@@ -323,732 +659,956 @@ export const AdminDashboard = ({ onOpenAssignModal }) => {
       setAddRescueError('Please fill out all required fields.');
       return;
     }
-    const ok = await createRescueUser(addRescueForm);
-    if (ok) {
-      setShowAddRescueModal(false);
-      setAddRescueForm({ name: '', email: '', password: '', teamId: 'PERT-01', phone: '' });
+
+    setIsCreatingRescue(true);
+    try {
+      const ok = await createRescueUser(addRescueForm);
+      if (ok) {
+        setShowAddRescueModal(false);
+        setAddRescueForm({ name: '', email: '', password: '', teamId: 'PERT-01', phone: '' });
+      }
+    } finally {
+      setIsCreatingRescue(false);
     }
   };
 
-  return (
-    <div className="container-fluid p-3 p-lg-4">
-      {/* Admin Header */}
-      <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+  // Filtered Users List
+  const filteredUsers = useMemo(() => {
+    return registeredUsers.filter((u) => {
+      if (userRoleFilter !== 'all' && u.role !== userRoleFilter) return false;
+      if (userStatusFilter === 'active' && u.isActive === false) return false;
+      if (userStatusFilter === 'disabled' && u.isActive !== false) return false;
+
+      if (debouncedUserSearch.trim()) {
+        const q = debouncedUserSearch.toLowerCase().trim();
+        const matchName = u.name?.toLowerCase().includes(q);
+        const matchEmail = u.email?.toLowerCase().includes(q);
+        const matchPhone = u.phone?.includes(q);
+        const matchTeam = u.teamId?.toLowerCase().includes(q);
+        if (!matchName && !matchEmail && !matchPhone && !matchTeam) return false;
+      }
+
+      return true;
+    });
+  }, [registeredUsers, userRoleFilter, userStatusFilter, debouncedUserSearch]);
+
+  // Users Table Columns
+  const userColumns = [
+    {
+      key: 'name',
+      label: 'User Name / Identity',
+      sortable: true,
+      render: (u) => (
         <div>
-          <div className="d-flex align-items-center gap-2">
-            <span className="badge bg-danger text-uppercase fw-semibold">Control Center</span>
-            <span className="text-muted small">Pune Municipal Emergency Response</span>
-          </div>
-          <h4 className="fw-bold text-dark mb-0 mt-1">
-            Admin Dashboard — {currentUser?.name || 'Administrator'}
-          </h4>
-        </div>
-        <div className="d-flex align-items-center gap-2">
-          <span className="badge bg-success-subtle text-success border border-success-subtle d-inline-flex align-items-center gap-1">
-            <ShieldCheck size={14} /> Dispatch Network Active
-          </span>
-        </div>
-      </div>
-
-      {/* 4 Summary Cards */}
-      <div className="row g-3 mb-4">
-        <div className="col-sm-6 col-xl-3">
-          <div className="stat-card">
-            <div>
-              <div className="text-muted small fw-semibold">Total Incidents</div>
-              <div className="h3 fw-bold mb-0 text-dark">{totalIncidents}</div>
-              <small className="text-muted">Recorded in Pune zone</small>
-            </div>
-            <div className="stat-icon bg-primary-subtle">
-              <ClipboardList size={20} />
-            </div>
+          <div className="fw-bold text-dark small">{u.name}</div>
+          <div className="text-muted" style={{ fontSize: '0.72rem' }}>
+            ID: {u._id || u.id}
           </div>
         </div>
-
-        <div className="col-sm-6 col-xl-3">
-          <div className="stat-card">
-            <div>
-              <div className="text-muted small fw-semibold">Critical Incidents</div>
-              <div className="h3 fw-bold mb-0 text-danger">{criticalIncidents}</div>
-              <small className="text-danger fw-semibold">Immediate squad response</small>
-            </div>
-            <div className="stat-icon bg-danger-subtle">
-              <Siren size={20} />
-            </div>
+      )
+    },
+    {
+      key: 'email',
+      label: 'Email & Contact',
+      sortable: true,
+      render: (u) => (
+        <div>
+          <div className="text-dark small d-flex align-items-center gap-1">
+            <Mail size={12} className="text-muted" />
+            <span>{u.email}</span>
           </div>
-        </div>
-
-        <div className="col-sm-6 col-xl-3">
-          <div className="stat-card">
-            <div>
-              <div className="text-muted small fw-semibold">Available Squads</div>
-              <div className="h3 fw-bold mb-0 text-success">{availableRescueTeams}</div>
-              <small className="text-muted">of {rescueTeams.length} ready for dispatch</small>
+          {u.phone && (
+            <div className="text-secondary small d-flex align-items-center gap-1 mt-0.5">
+              <Phone size={12} className="text-muted" />
+              <span>{u.phone}</span>
             </div>
-            <div className="stat-icon bg-success-subtle">
-              <Ambulance size={20} />
-            </div>
-          </div>
-        </div>
-
-        <div className="col-sm-6 col-xl-3">
-          <div className="stat-card">
-            <div>
-              <div className="text-muted small fw-semibold">Resolved Cases</div>
-              <div className="h3 fw-bold mb-0 text-dark">{resolvedIncidents}</div>
-              <small className="text-success fw-semibold">Missions completed</small>
-            </div>
-            <div className="stat-icon bg-success-subtle">
-              <CheckCircle size={20} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="d-flex flex-wrap gap-2 mb-4 border-bottom pb-2">
-        <button
-          className={`btn btn-sm d-flex align-items-center gap-1 ${activeTab === 'incidents' ? 'btn-danger' : 'btn-outline-secondary'}`}
-          onClick={() => setActiveTab('incidents')}
-        >
-          <ClipboardList size={15} /> Incidents
-          <span className="badge bg-white text-danger ms-1">{incidents.length}</span>
-        </button>
-        <button
-          className={`btn btn-sm d-flex align-items-center gap-1 ${activeTab === 'teams' ? 'btn-danger' : 'btn-outline-secondary'}`}
-          onClick={() => setActiveTab('teams')}
-        >
-          <Ambulance size={15} /> Rescue Teams
-          <span className={`badge ms-1 ${activeTab === 'teams' ? 'bg-white text-danger' : 'bg-danger text-white'}`}>{rescueTeams.length}</span>
-        </button>
-        <button
-          className={`btn btn-sm d-flex align-items-center gap-1 ${activeTab === 'users' ? 'btn-danger' : 'btn-outline-secondary'}`}
-          onClick={() => setActiveTab('users')}
-        >
-          <Users size={15} /> User Management
-          <span className={`badge ms-1 ${activeTab === 'users' ? 'bg-white text-danger' : 'bg-secondary text-white'}`}>{registeredUsers.length}</span>
-        </button>
-        <button
-          className={`btn btn-sm d-flex align-items-center gap-1 ${activeTab === 'activity' ? 'btn-danger' : 'btn-outline-secondary'}`}
-          onClick={() => setActiveTab('activity')}
-        >
-          <Activity size={15} /> Activity Log
-          {auditLogs.length > 0 && (
-            <span className={`badge ms-1 ${activeTab === 'activity' ? 'bg-white text-danger' : 'bg-dark text-white'}`}>{auditLogs.length}</span>
           )}
-        </button>
+        </div>
+      )
+    },
+    {
+      key: 'role',
+      label: 'Role / Team',
+      sortable: true,
+      width: '140px',
+      render: (u) => {
+        let badgeClass = 'bg-secondary';
+        if (u.role === 'admin') badgeClass = 'bg-danger text-white';
+        else if (u.role === 'rescue') badgeClass = 'bg-primary text-white';
+        else badgeClass = 'bg-light text-dark border';
+
+        return (
+          <div>
+            <span className={`badge ${badgeClass} text-uppercase px-2 py-0.5`} style={{ fontSize: '0.68rem' }}>
+              {u.role}
+            </span>
+            {u.teamId && (
+              <div className="text-primary small fw-semibold font-monospace mt-1">
+                {u.teamId}
+              </div>
+            )}
+          </div>
+        );
+      }
+    },
+    {
+      key: 'isActive',
+      label: 'Account Status',
+      sortable: true,
+      width: '120px',
+      render: (u) => (
+        <span
+          className={`badge ${
+            u.isActive !== false ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle'
+          } py-0.5 px-2 small`}
+        >
+          {u.isActive !== false ? 'Active' : 'Disabled'}
+        </span>
+      )
+    },
+    {
+      key: 'createdAt',
+      label: 'Registered',
+      sortable: true,
+      width: '120px',
+      render: (u) => {
+        const { relativeTime, fullDate } = formatRelativeTime(u.createdAt);
+        return (
+          <span className="text-secondary small" title={fullDate}>
+            {relativeTime}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'actions',
+      label: 'Administration Actions',
+      sortable: false,
+      align: 'end',
+      width: '240px',
+      render: (u) => {
+        const self = isSelf(u);
+        const lastAdm = isLastAdmin(u);
+        const cannotTouch = self || lastAdm;
+
+        return (
+          <div className="d-inline-flex align-items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+            {/* Edit Profile */}
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary py-1 px-2"
+              onClick={() => handleOpenEditUser(u)}
+              title="Edit Contact & Name"
+            >
+              <Edit3 size={13} />
+            </button>
+
+            {/* Reset Temporary Password */}
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-warning py-1 px-2 text-dark"
+              onClick={() => handleResetPassword(u)}
+              title="Generate temporary password"
+            >
+              <Key size={13} />
+            </button>
+
+            {/* Enable / Disable Toggle */}
+            <button
+              type="button"
+              className={`btn btn-sm ${
+                u.isActive !== false ? 'btn-outline-secondary' : 'btn-outline-success'
+              } py-1 px-2`}
+              disabled={cannotTouch}
+              onClick={() => setConfirmStatusUser(u)}
+              title={
+                self
+                  ? 'Cannot disable your own account'
+                  : lastAdm
+                  ? 'Cannot disable last active administrator'
+                  : u.isActive !== false
+                  ? 'Disable Account'
+                  : 'Enable Account'
+              }
+            >
+              {u.isActive !== false ? <UserX size={13} /> : <UserCheck size={13} />}
+            </button>
+
+            {/* Delete Account */}
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-danger py-1 px-2"
+              disabled={cannotTouch}
+              onClick={() => setConfirmDeleteUser(u)}
+              title={
+                self
+                  ? 'Cannot delete your own account'
+                  : lastAdm
+                  ? 'Cannot delete last active administrator'
+                  : 'Delete Account'
+              }
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        );
+      }
+    }
+  ];
+
+  // Filtered Activity Logs
+  const filteredLogs = useMemo(() => {
+    return auditLogs.filter((log) => {
+      if (logActionFilter !== 'all' && !log.action?.toLowerCase().includes(logActionFilter.toLowerCase())) {
+        return false;
+      }
+      if (logSearch.trim()) {
+        const q = logSearch.toLowerCase().trim();
+        const matchAct = log.action?.toLowerCase().includes(q);
+        const matchUser = log.userEmail?.toLowerCase().includes(q) || log.userName?.toLowerCase().includes(q);
+        const matchDetail = log.details && JSON.stringify(log.details).toLowerCase().includes(q);
+        if (!matchAct && !matchUser && !matchDetail) return false;
+      }
+      return true;
+    });
+  }, [auditLogs, logActionFilter, logSearch]);
+
+  // Activity Log Columns
+  const logColumns = [
+    {
+      key: 'action',
+      label: 'Action Type',
+      sortable: true,
+      width: '180px',
+      render: (log) => (
+        <span className="badge bg-dark font-monospace py-1 px-2" style={{ fontSize: '0.72rem' }}>
+          {log.action}
+        </span>
+      )
+    },
+    {
+      key: 'userEmail',
+      label: 'Operator / Actor',
+      sortable: true,
+      render: (log) => (
+        <div>
+          <div className="fw-semibold text-dark small">{log.userName || log.userEmail || 'System'}</div>
+          {log.userRole && (
+            <span className="badge bg-light text-secondary border small" style={{ fontSize: '0.65rem' }}>
+              {log.userRole}
+            </span>
+          )}
+        </div>
+      )
+    },
+    {
+      key: 'details',
+      label: 'Event Details',
+      sortable: false,
+      render: (log) => (
+        <div className="text-secondary small font-monospace text-truncate" style={{ maxWidth: '340px' }}>
+          {typeof log.details === 'object' ? JSON.stringify(log.details) : String(log.details || '—')}
+        </div>
+      )
+    },
+    {
+      key: 'ip',
+      label: 'Client IP',
+      sortable: true,
+      width: '130px',
+      render: (log) => (
+        <span className="text-muted small font-monospace">
+          {log.ip || '127.0.0.1'}
+        </span>
+      )
+    },
+    {
+      key: 'timestamp',
+      label: 'Timestamp',
+      sortable: true,
+      width: '150px',
+      render: (log) => {
+        const { relativeTime, fullDate } = formatRelativeTime(log.timestamp || log.createdAt);
+        return (
+          <span className="text-secondary small" title={fullDate}>
+            {relativeTime}
+          </span>
+        );
+      }
+    }
+  ];
+
+  return (
+    <div className="admin-dashboard container-fluid p-3 p-lg-4">
+      {/* 1. Control Center Header */}
+      <PageHeader
+        title="Control Center • Pune Municipal Dispatch"
+        subtitle={`Signed in as ${currentUser?.name || 'Administrator'} • Live real-time emergency telemetry & squad coordination.`}
+        roleBadge="CONTROL CENTER"
+        showReportButton={false}
+      />
+
+      {/* 2. 6 Clickable Control Room Stat Cards Grid */}
+      <div className="stat-card-grid">
+        {/* Total Incidents */}
+        <StatCard
+          icon={<Activity size={20} />}
+          value={metrics.total}
+          label="Total Incidents"
+          sublabel="All recorded emergencies"
+          variant="primary"
+          isActive={activeTab === 'incidents' && statusFilter === 'all' && severityFilter === 'all'}
+          onClick={() => {
+            setActiveTab('incidents');
+            setStatusFilter('all');
+            setSeverityFilter('all');
+            setAssignmentFilter('all');
+          }}
+        />
+
+        {/* Critical Open */}
+        <StatCard
+          icon={<Siren size={20} />}
+          value={metrics.criticalOpen}
+          label="Critical Open"
+          sublabel="Priority tier-1 alerts"
+          variant="danger"
+          isActive={activeTab === 'incidents' && severityFilter === 'critical' && statusFilter === 'active'}
+          onClick={() => {
+            setActiveTab('incidents');
+            setSeverityFilter('critical');
+            setStatusFilter('active');
+          }}
+        />
+
+        {/* Unassigned */}
+        <StatCard
+          icon={<AlertTriangle size={20} />}
+          value={metrics.unassigned}
+          label="Unassigned"
+          sublabel="Awaiting squad dispatch"
+          variant="warning"
+          isActive={activeTab === 'incidents' && assignmentFilter === 'unassigned'}
+          onClick={() => {
+            setActiveTab('incidents');
+            setAssignmentFilter('unassigned');
+            setStatusFilter('active');
+          }}
+        />
+
+        {/* Available Teams */}
+        <StatCard
+          icon={<Ambulance size={20} />}
+          value={`${metrics.availableTeams} / ${metrics.totalTeams}`}
+          label="Available Squads"
+          sublabel="Ready for dispatch"
+          variant="success"
+          isActive={activeTab === 'teams'}
+          onClick={() => setActiveTab('teams')}
+        />
+
+        {/* Completed Today */}
+        <StatCard
+          icon={<CheckCircle2 size={20} />}
+          value={metrics.completedToday}
+          label="Resolved Today"
+          sublabel="Missions closed today"
+          variant="info"
+          isActive={activeTab === 'incidents' && statusFilter === 'completed' && dateRangeFilter === 'today'}
+          onClick={() => {
+            setActiveTab('incidents');
+            setStatusFilter('completed');
+            setDateRangeFilter('today');
+          }}
+        />
+
+        {/* Registered Citizens */}
+        <StatCard
+          icon={<Users size={20} />}
+          value={metrics.registeredCitizens}
+          label="Citizens Enrolled"
+          sublabel="Pune residential accounts"
+          variant="secondary"
+          isActive={activeTab === 'users'}
+          onClick={() => setActiveTab('users')}
+        />
       </div>
 
-      {/* TAB 1: Incidents Table */}
+      {/* 3. Pure SVG / CSS Real-Data Metrics Chart Section */}
+      <ChartSection incidents={incidents} />
+
+      {/* 4. Tab Navigation Strip */}
+      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 border-bottom pb-2">
+        <div className="d-flex flex-wrap gap-2" role="tablist" aria-label="Control Center Views">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'incidents'}
+            className={`btn btn-sm d-inline-flex align-items-center gap-1.5 fw-semibold ${
+              activeTab === 'incidents' ? 'btn-danger' : 'btn-outline-secondary'
+            }`}
+            onClick={() => setActiveTab('incidents')}
+          >
+            <Activity size={14} />
+            <span>Incidents & Dispatch</span>
+            <span className={`badge ms-1 ${activeTab === 'incidents' ? 'bg-white text-danger' : 'bg-dark text-white'}`}>
+              {filteredIncidents.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'teams'}
+            className={`btn btn-sm d-inline-flex align-items-center gap-1.5 fw-semibold ${
+              activeTab === 'teams' ? 'btn-danger' : 'btn-outline-secondary'
+            }`}
+            onClick={() => setActiveTab('teams')}
+          >
+            <Ambulance size={14} />
+            <span>Rescue Teams</span>
+            <span className={`badge ms-1 ${activeTab === 'teams' ? 'bg-white text-danger' : 'bg-success text-white'}`}>
+              {rescueTeams.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'users'}
+            className={`btn btn-sm d-inline-flex align-items-center gap-1.5 fw-semibold ${
+              activeTab === 'users' ? 'btn-danger' : 'btn-outline-secondary'
+            }`}
+            onClick={() => setActiveTab('users')}
+          >
+            <Users size={14} />
+            <span>User Management</span>
+            <span className={`badge ms-1 ${activeTab === 'users' ? 'bg-white text-danger' : 'bg-secondary text-white'}`}>
+              {registeredUsers.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'activity'}
+            className={`btn btn-sm d-inline-flex align-items-center gap-1.5 fw-semibold ${
+              activeTab === 'activity' ? 'btn-danger' : 'btn-outline-secondary'
+            }`}
+            onClick={() => setActiveTab('activity')}
+          >
+            <Activity size={14} />
+            <span>Activity Log</span>
+            <span className={`badge ms-1 ${activeTab === 'activity' ? 'bg-white text-danger' : 'bg-dark text-white'}`}>
+              {auditLogs.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'map'}
+            className={`btn btn-sm d-inline-flex align-items-center gap-1.5 fw-semibold ${
+              activeTab === 'map' ? 'btn-danger' : 'btn-outline-secondary'
+            }`}
+            onClick={() => setActiveTab('map')}
+          >
+            <MapIcon size={14} />
+            <span>Pune GIS Situation Map</span>
+          </button>
+        </div>
+
+        {/* Global Action on Tab (e.g. Export CSV or Create Squad User) */}
+        {activeTab === 'incidents' && (
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-dark d-inline-flex align-items-center gap-1.5 fw-semibold"
+            onClick={handleExportCSV}
+            title="Download CSV export of currently filtered incidents"
+          >
+            <Download size={14} />
+            <span>Export Filtered CSV</span>
+          </button>
+        )}
+
+        {activeTab === 'users' && (
+          <button
+            type="button"
+            className="btn btn-sm btn-resq-danger d-inline-flex align-items-center gap-1.5 fw-semibold"
+            onClick={() => setShowAddRescueModal(true)}
+          >
+            <UserPlus size={14} />
+            <span>Create Rescue Squad Account</span>
+          </button>
+        )}
+      </div>
+
+      {/* ============================================================== */}
+      {/* TAB 1: INCIDENTS & DISPATCH DATA TABLE                          */}
+      {/* ============================================================== */}
       {activeTab === 'incidents' && (
-        <div className="resq-card mb-4">
-          <div className="resq-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-            <div className="d-flex align-items-center gap-2">
-              <ClipboardList size={18} className="text-danger" />
-              <h6 className="mb-0 fw-bold text-dark">Pune Emergency Incidents</h6>
-              <span className="badge bg-dark rounded-pill">{filteredIncidents.length}</span>
-            </div>
+        <div className="resq-card border shadow-sm mb-4">
+          {/* Filter Bar */}
+          <div className="p-3 border-bottom bg-white">
+            <FilterBar
+              searchQuery={incidentSearch}
+              onSearchChange={(q) => {
+                setIncidentSearch(q);
+                setCurrentPage(1);
+              }}
+              searchPlaceholder="Search incident ID, locality, squad, or keyword..."
+              statusFilters={[
+                { label: 'Active (Open)', value: 'active' },
+                { label: 'Completed (Resolved)', value: 'completed' },
+                { label: 'Reported', value: 'Reported' },
+                { label: 'Assigned', value: 'Assigned' },
+                { label: 'On the Way', value: 'On the Way' },
+                { label: 'Reached', value: 'Reached' },
+                { label: 'In Progress', value: 'In Progress' }
+              ]}
+              selectedStatus={statusFilter}
+              onStatusChange={(val) => {
+                setStatusFilter(val);
+                setCurrentPage(1);
+              }}
+              severityFilters={[
+                { label: 'Critical', value: 'critical' },
+                { label: 'High', value: 'high' },
+                { label: 'Medium', value: 'medium' },
+                { label: 'Low', value: 'low' }
+              ]}
+              selectedSeverity={severityFilter}
+              onSeverityChange={(val) => {
+                setSeverityFilter(val);
+                setCurrentPage(1);
+              }}
+              typeFilters={['Fire', 'Flood', 'Accident', 'Building Collapse', 'Other']}
+              selectedType={typeFilter}
+              onTypeChange={(val) => {
+                setTypeFilter(val);
+                setCurrentPage(1);
+              }}
+              extraFilters={
+                <div className="d-flex align-items-center gap-2">
+                  {/* Assignment Select */}
+                  <select
+                    className="form-select form-select-sm border-secondary-subtle"
+                    value={assignmentFilter}
+                    onChange={(e) => {
+                      setAssignmentFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    style={{ width: 'auto', minWidth: '130px' }}
+                    aria-label="Filter by squad assignment"
+                  >
+                    <option value="all">All Assignments</option>
+                    <option value="unassigned">Unassigned Only</option>
+                    <option value="assigned">Assigned Squad</option>
+                  </select>
 
-            {/* Quick Filters & CSV Export */}
-            <div className="d-flex flex-wrap align-items-center gap-2">
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-dark d-flex align-items-center gap-1"
-                onClick={exportIncidentsToCSV}
-                title="Export filtered emergency incidents to CSV spreadsheet"
-                disabled={sortedIncidents.length === 0}
-              >
-                <Download size={14} />
-                <span>Export CSV</span>
-              </button>
-
-              <select
-                className="form-select form-select-sm"
-                style={{ width: 'auto' }}
-                value={filterSeverity}
-                onChange={(e) => setFilterSeverity(e.target.value)}
-              >
-                <option value="all">All Severities</option>
-                <option value="critical">Critical</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
-
-              <select
-                className="form-select form-select-sm"
-                style={{ width: 'auto' }}
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-              >
-                <option value="all">All Statuses</option>
-                <option value="active">Active Only</option>
-                <option value="resolved">Resolved Only</option>
-              </select>
-            </div>
+                  {/* Date Range Select */}
+                  <select
+                    className="form-select form-select-sm border-secondary-subtle"
+                    value={dateRangeFilter}
+                    onChange={(e) => {
+                      setDateRangeFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    style={{ width: 'auto', minWidth: '120px' }}
+                    aria-label="Filter by reporting date"
+                  >
+                    <option value="all">All Dates</option>
+                    <option value="today">Today Only</option>
+                    <option value="7days">Last 7 Days</option>
+                  </select>
+                </div>
+              }
+              onReset={() => {
+                setIncidentSearch('');
+                setSeverityFilter('all');
+                setStatusFilter('all');
+                setTypeFilter('all');
+                setAssignmentFilter('all');
+                setDateRangeFilter('all');
+                setSelectedTeamFilter('all');
+                setCurrentPage(1);
+              }}
+              hasActiveFilters={Boolean(
+                incidentSearch ||
+                  severityFilter !== 'all' ||
+                  statusFilter !== 'all' ||
+                  typeFilter !== 'all' ||
+                  assignmentFilter !== 'all' ||
+                  dateRangeFilter !== 'all' ||
+                  selectedTeamFilter !== 'all'
+              )}
+            />
           </div>
 
-          <div className="resq-card-body p-0">
-            <div className="table-responsive">
-              <table className="table table-hover align-middle mb-0">
-                <thead className="table-light small text-uppercase text-secondary">
-                  <tr>
-                    <th
-                      className="ps-4 user-select-none"
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => handleSort('id')}
-                      title="Sort by Incident ID"
-                    >
-                      <div className="d-inline-flex align-items-center">
-                        ID {renderSortIndicator('id')}
-                      </div>
-                    </th>
-                    <th
-                      className="user-select-none"
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => handleSort('type')}
-                      title="Sort by Emergency Type"
-                    >
-                      <div className="d-inline-flex align-items-center">
-                        Emergency Type {renderSortIndicator('type')}
-                      </div>
-                    </th>
-                    <th
-                      className="user-select-none"
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => handleSort('location')}
-                      title="Sort by Location"
-                    >
-                      <div className="d-inline-flex align-items-center">
-                        Location (Pune) {renderSortIndicator('location')}
-                      </div>
-                    </th>
-                    <th
-                      className="user-select-none"
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => handleSort('severity')}
-                      title="Sort by Severity"
-                    >
-                      <div className="d-inline-flex align-items-center">
-                        Severity {renderSortIndicator('severity')}
-                      </div>
-                    </th>
-                    <th
-                      className="user-select-none"
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => handleSort('status')}
-                      title="Sort by Status"
-                    >
-                      <div className="d-inline-flex align-items-center">
-                        Status {renderSortIndicator('status')}
-                      </div>
-                    </th>
-                    <th>Assigned Squad</th>
-                    <th className="pe-4 text-end">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedIncidents.length === 0 ? (
-                    <tr>
-                      <td colSpan="7" className="text-center py-5 text-muted">
-                        <ClipboardList size={36} className="mb-2 text-secondary opacity-50" />
-                        <div>No emergency incidents match current filter criteria.</div>
-                      </td>
-                    </tr>
-                  ) : (
-                    sortedIncidents.map((incident) => (
-                      <tr key={incident.id}>
-                        <td className="ps-4 fw-bold text-danger small">
-                          #{incident.id}
-                        </td>
-                        <td>
-                          <div className="d-flex align-items-center gap-2">
-                            {getIncidentIcon(incident.type)}
-                            <span className="fw-semibold text-dark">{incident.type}</span>
-                          </div>
-                        </td>
-                        <td>
-                          <div className="d-flex align-items-center gap-1 text-secondary small">
-                            <MapPin size={13} className="text-muted flex-shrink-0" />
-                            <span className="text-truncate" style={{ maxWidth: '200px' }}>
-                              {incident.location}
-                            </span>
-                          </div>
-                        </td>
-                        <td>
-                          <span className={`badge ${getSeverityBadge(incident.severity)}`}>
-                            {incident.severity}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`badge ${getStatusBadge(incident.status)}`}>
-                            {incident.status}
-                          </span>
-                        </td>
-                        <td>
-                          {incident.assignedTeamName ? (
-                            <span className="badge bg-primary-subtle text-primary border border-primary-subtle d-inline-flex align-items-center gap-1">
-                              <Ambulance size={12} /> {incident.assignedTeamName}
-                            </span>
-                          ) : (
-                            <span className="badge bg-light text-muted border">Unassigned</span>
-                          )}
-                        </td>
-                        <td className="pe-4 text-end">
-                          <div className="btn-group btn-group-sm">
-                            <button
-                              className="btn btn-outline-secondary"
-                              onClick={() => setSelectedIncident(incident)}
-                              title="View Details"
-                            >
-                              <Eye size={14} />
-                            </button>
-                            {incident.status === 'Reported' && (
-                              <button
-                                className="btn btn-resq-danger"
-                                onClick={() => onOpenAssignModal(incident)}
-                                title="Assign Squad"
-                              >
-                                <UserPlus size={14} className="me-1" />
-                                <span>Assign</span>
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          {/* Incidents Table */}
+          <DataTable
+            columns={incidentColumns}
+            data={sortedIncidents}
+            sortField={sortField}
+            sortOrder={sortOrder}
+            onSort={handleSort}
+            onRowClick={(item) => setSelectedIncident(item)}
+            highlightedId={highlightedIncidentId}
+            currentPage={currentPage}
+            itemsPerPage={10}
+            onPageChange={setCurrentPage}
+            emptyTitle="No incidents matching criteria"
+            emptyMessage="Try adjusting or clearing your search filters to view emergency records."
+            emptyActionLabel="Reset All Filters"
+            onEmptyAction={() => {
+              setIncidentSearch('');
+              setSeverityFilter('all');
+              setStatusFilter('all');
+              setTypeFilter('all');
+              setAssignmentFilter('all');
+              setDateRangeFilter('all');
+              setSelectedTeamFilter('all');
+            }}
+          />
         </div>
       )}
 
-      {/* TAB 2: Rescue Teams */}
+      {/* ============================================================== */}
+      {/* TAB 2: RESCUE TEAMS TELEMETRY & CARDS                           */}
+      {/* ============================================================== */}
       {activeTab === 'teams' && (
-        <div className="resq-card mb-4">
-          <div className="resq-card-header d-flex align-items-center justify-content-between">
-            <div className="d-flex align-items-center gap-2">
-              <Ambulance size={18} className="text-danger" />
-              <h6 className="mb-0 fw-bold text-dark">Pune Emergency Response Squads</h6>
-              <span className="badge bg-dark rounded-pill">{rescueTeams.length}</span>
-            </div>
-            <button
-              className="btn btn-outline-danger btn-sm d-flex align-items-center gap-1"
-              onClick={() => setShowAddRescueModal(true)}
-            >
-              <UserPlus size={14} /> Add Squad User
-            </button>
-          </div>
-          <div className="resq-card-body p-0">
-            <div className="table-responsive">
-              <table className="table table-hover align-middle mb-0">
-                <thead className="table-light small text-uppercase text-secondary">
-                  <tr>
-                    <th className="ps-4">Squad ID</th>
-                    <th>Team Name</th>
-                    <th>Specialty</th>
-                    <th>Squad Leader</th>
-                    <th>Current Station</th>
-                    <th>Contact Phone</th>
-                    <th className="pe-4">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rescueTeams.map((team) => (
-                    <tr key={team.id}>
-                      <td className="ps-4 fw-bold text-danger">{team.id}</td>
-                      <td className="fw-semibold text-dark">{team.name}</td>
-                      <td>
-                        <span className="badge bg-light text-dark border">{team.type}</span>
-                      </td>
-                      <td className="small text-secondary">{team.leader}</td>
-                      <td>
-                        <div className="d-flex align-items-center gap-1 small text-muted">
-                          <MapPin size={12} /> {team.currentLocation}
+        <div className="row g-3 mb-4">
+          {rescueTeams.map((team) => {
+            const isAvailable = team.status === 'Available';
+            // Find active mission assigned to this team
+            const activeMission = incidents.find(
+              (i) =>
+                (i.assignedTeamId === team.id ||
+                  (i.assignedTeamName && i.assignedTeamName.toLowerCase() === team.name.toLowerCase())) &&
+                i.status !== 'Completed' &&
+                i.status !== 'Resolved'
+            );
+
+            // Count completed missions for this team
+            const completedCount = incidents.filter(
+              (i) =>
+                (i.assignedTeamId === team.id ||
+                  (i.assignedTeamName && i.assignedTeamName.toLowerCase() === team.name.toLowerCase())) &&
+                (i.status === 'Completed' || i.status === 'Resolved')
+            ).length;
+
+            return (
+              <div key={team.id} className="col-md-6 col-xl-4">
+                <div className="resq-card p-4 h-100 bg-white shadow-sm border d-flex flex-column justify-content-between">
+                  <div>
+                    {/* Top Identity & Status */}
+                    <div className="d-flex align-items-start justify-content-between mb-3">
+                      <div>
+                        <span className="badge bg-dark font-monospace mb-1">{team.id}</span>
+                        <h5 className="fw-bold text-dark mb-0 fs-6">{team.name}</h5>
+                        <div className="text-muted small">Leader: <strong>{team.leader || 'Officer in Charge'}</strong></div>
+                      </div>
+                      <StatusBadge status={team.status} size="sm" />
+                    </div>
+
+                    {/* Operational Details Grid */}
+                    <div className="p-3 rounded bg-light border mb-3 small">
+                      <div className="row g-2">
+                        <div className="col-6">
+                          <span className="text-muted d-block" style={{ fontSize: '0.68rem' }}>BASE LOCATION:</span>
+                          <strong className="text-dark d-flex align-items-center gap-1">
+                            <MapPin size={11} className="text-danger" />
+                            {team.currentLocation || 'Pune Central'}
+                          </strong>
                         </div>
-                      </td>
-                      <td>
-                        <div className="d-flex align-items-center gap-1 small text-muted">
-                          <Phone size={12} /> {team.phone}
+                        <div className="col-6">
+                          <span className="text-muted d-block" style={{ fontSize: '0.68rem' }}>CREW COMPLEMENT:</span>
+                          <strong className="text-dark d-flex align-items-center gap-1">
+                            <Users size={11} className="text-primary" />
+                            {team.membersCount || 6} personnel
+                          </strong>
                         </div>
-                      </td>
-                      <td className="pe-4">
-                        <span className={`badge ${
-                          team.status === 'Available' ? 'bg-success' :
-                          team.status === 'Assigned' ? 'bg-warning text-dark' :
-                          'bg-danger'
-                        }`}>
-                          {team.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                        <div className="col-6">
+                          <span className="text-muted d-block" style={{ fontSize: '0.68rem' }}>RESPONSE VEHICLE:</span>
+                          <span className="text-dark fw-medium d-flex align-items-center gap-1">
+                            <Truck size={11} className="text-muted" />
+                            {team.vehicle || 'Heavy Unit'}
+                          </span>
+                        </div>
+                        <div className="col-6">
+                          <span className="text-muted d-block" style={{ fontSize: '0.68rem' }}>COMPLETED MISSIONS:</span>
+                          <strong className="text-success">{completedCount} resolved</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Active Mission or Standby */}
+                    <div className="mb-3">
+                      <div className="text-muted small fw-semibold text-uppercase tracking-wider mb-1" style={{ fontSize: '0.68rem' }}>
+                        Current Mission Status:
+                      </div>
+                      {activeMission ? (
+                        <div className="p-2.5 rounded bg-primary-subtle border border-primary-subtle small">
+                          <div className="d-flex align-items-center justify-content-between mb-1">
+                            <strong className="text-primary">#{activeMission.id}: {activeMission.type}</strong>
+                            <SeverityBadge severity={activeMission.severity} size="sm" />
+                          </div>
+                          <div className="text-secondary small d-flex align-items-center gap-1">
+                            <MapPin size={11} className="text-danger flex-shrink-0" />
+                            <span className="text-truncate">{activeMission.location}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-2.5 rounded bg-success-subtle border border-success-subtle text-success small d-flex align-items-center gap-1.5">
+                          <CheckCircle2 size={14} />
+                          <span>Squad on Standby • Ready for immediate dispatch</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Card Footer Actions */}
+                  <div className="border-top pt-3 d-flex align-items-center justify-content-between gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1.5"
+                      onClick={() => {
+                        setSelectedTeamFilter(team.id);
+                        setActiveTab('incidents');
+                      }}
+                      title="View all incidents associated with this squad"
+                    >
+                      <Eye size={13} />
+                      <span>View Missions</span>
+                    </button>
+
+                    {team.phone && (
+                      <a
+                        href={`tel:${team.phone}`}
+                        className="btn btn-sm btn-outline-dark d-inline-flex align-items-center gap-1"
+                      >
+                        <Phone size={13} />
+                        <span>Call Base</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* TAB 3: User Management */}
+      {/* ============================================================== */}
+      {/* TAB 3: USER MANAGEMENT                                         */}
+      {/* ============================================================== */}
       {activeTab === 'users' && (
-        <div className="resq-card mb-4">
-          <div className="resq-card-header d-flex flex-wrap align-items-center justify-content-between gap-3">
-            <div className="d-flex align-items-center gap-2">
-              <Users size={18} className="text-danger" />
-              <h6 className="mb-0 fw-bold text-dark">Registered Users Directory</h6>
-              <span className="badge bg-dark rounded-pill">{filteredUsers.length}</span>
-            </div>
-
-            <div className="d-flex flex-wrap align-items-center gap-2">
-              {/* Search Bar */}
-              <div className="input-group input-group-sm" style={{ width: '220px' }}>
-                <span className="input-group-text bg-light border-end-0">
-                  <Search size={14} className="text-muted" />
-                </span>
-                <input
-                  type="text"
-                  className="form-control border-start-0"
-                  placeholder="Search user, email, squad..."
-                  value={userSearch}
-                  onChange={(e) => setUserSearch(e.target.value)}
-                />
-              </div>
-
-              {/* Role Filter */}
-              <select
-                className="form-select form-select-sm"
-                style={{ width: 'auto' }}
-                value={userRoleFilter}
-                onChange={(e) => setUserRoleFilter(e.target.value)}
-              >
-                <option value="all">All Roles</option>
-                <option value="citizen">Citizens</option>
-                <option value="rescue">Rescue Squads</option>
-                <option value="admin">Administrators</option>
-              </select>
-
-              {/* Status Filter */}
-              <select
-                className="form-select form-select-sm"
-                style={{ width: 'auto' }}
-                value={userStatusFilter}
-                onChange={(e) => setUserStatusFilter(e.target.value)}
-              >
-                <option value="all">All Statuses</option>
-                <option value="active">Active Only</option>
-                <option value="inactive">Disabled Only</option>
-              </select>
-
-              <button
-                className="btn btn-resq-danger btn-sm d-flex align-items-center gap-1"
-                onClick={() => setShowAddRescueModal(true)}
-              >
-                <UserPlus size={14} /> Add Squad User
-              </button>
-
-              <button
-                className="btn btn-outline-secondary btn-sm"
-                onClick={() => fetchUsers()}
-                title="Refresh user directory"
-              >
-                <RefreshCw size={14} className={usersLoading ? 'spin' : ''} />
-              </button>
-            </div>
+        <div className="resq-card border shadow-sm mb-4">
+          {/* User Filter Bar */}
+          <div className="p-3 border-bottom bg-white">
+            <FilterBar
+              searchQuery={userSearch}
+              onSearchChange={(q) => {
+                setUserSearch(q);
+                setUserPage(1);
+              }}
+              searchPlaceholder="Search user name, email, phone, or squad..."
+              statusFilters={[
+                { label: 'Active', value: 'active' },
+                { label: 'Disabled', value: 'disabled' }
+              ]}
+              selectedStatus={userStatusFilter}
+              onStatusChange={(val) => {
+                setUserStatusFilter(val);
+                setUserPage(1);
+              }}
+              severityFilters={[]}
+              typeFilters={[
+                { label: 'Citizen', value: 'citizen' },
+                { label: 'Rescue Squad', value: 'rescue' },
+                { label: 'Admin', value: 'admin' }
+              ]}
+              selectedType={userRoleFilter}
+              onTypeChange={(val) => {
+                setUserRoleFilter(val);
+                setUserPage(1);
+              }}
+              onReset={() => {
+                setUserSearch('');
+                setUserRoleFilter('all');
+                setUserStatusFilter('all');
+                setUserPage(1);
+              }}
+              hasActiveFilters={Boolean(userSearch || userRoleFilter !== 'all' || userStatusFilter !== 'all')}
+            />
           </div>
 
-          <div className="resq-card-body p-0">
-            {usersLoading ? (
-              <div className="text-center py-5">
-                <div className="spinner-border text-danger spinner-border-sm me-2" role="status"></div>
-                <span className="text-muted small">Loading registered accounts...</span>
-              </div>
-            ) : filteredUsers.length === 0 ? (
-              <div className="text-center py-5 text-muted">
-                <Users size={36} className="mb-2 text-secondary opacity-50" />
-                <div>No registered users found matching the filter criteria.</div>
-              </div>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-hover align-middle mb-0">
-                  <thead className="table-light small text-uppercase text-secondary">
-                    <tr>
-                      <th className="ps-4">User</th>
-                      <th>Email</th>
-                      <th>Role</th>
-                      <th>Phone</th>
-                      <th>Status</th>
-                      <th>Last Login</th>
-                      <th className="pe-4 text-end">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredUsers.map((u) => {
-                      const isSelf = String(u._id || u.id) === String(currentUser?._id || currentUser?.id);
-                      return (
-                        <tr key={u._id || u.id}>
-                          <td className="ps-4">
-                            <div className="d-flex align-items-center gap-2">
-                              <div
-                                className="d-flex align-items-center justify-content-center rounded-circle bg-danger text-white fw-bold"
-                                style={{ width: 34, height: 34, fontSize: '0.8rem', flexShrink: 0 }}
-                              >
-                                {u.name ? u.name.charAt(0).toUpperCase() : '?'}
-                              </div>
-                              <div>
-                                <div className="fw-semibold text-dark small d-flex align-items-center gap-1">
-                                  <span>{u.name}</span>
-                                  {isSelf && (
-                                    <span className="badge bg-light text-muted border" style={{ fontSize: '0.65rem' }}>
-                                      You
-                                    </span>
-                                  )}
-                                </div>
-                                {u.teamId && (
-                                  <span className="badge bg-primary-subtle text-primary border border-primary-subtle" style={{ fontSize: '0.65rem' }}>
-                                    {u.teamId}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                          <td>
-                            <div className="d-flex align-items-center gap-1 text-muted small">
-                              <Mail size={12} />
-                              <span>{u.email}</span>
-                            </div>
-                          </td>
-                          <td>
-                            <span className={`badge ${
-                              u.role === 'admin' ? 'bg-danger' :
-                              u.role === 'rescue' ? 'bg-primary' :
-                              'bg-success-subtle text-success border border-success-subtle'
-                            }`}>
-                              <UserCheck size={11} className="me-1 d-inline" />
-                              {u.role}
-                            </span>
-                          </td>
-                          <td>
-                            {u.phone ? (
-                              <div className="d-flex align-items-center gap-1 text-muted small">
-                                <Phone size={12} />
-                                <span>{u.phone}</span>
-                              </div>
-                            ) : (
-                              <span className="text-muted small">—</span>
-                            )}
-                          </td>
-                          <td>
-                            {u.isActive === false ? (
-                              <span className="badge bg-danger-subtle text-danger border border-danger-subtle">
-                                Disabled
-                              </span>
-                            ) : (
-                              <span className="badge bg-success-subtle text-success border border-success-subtle">
-                                Active
-                              </span>
-                            )}
-                          </td>
-                          <td>
-                            {u.lastLogin ? (
-                              <div className="text-muted small d-flex align-items-center gap-1">
-                                <Clock size={12} />
-                                <span>{new Date(u.lastLogin).toLocaleDateString('en-IN', {
-                                  day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
-                                })}</span>
-                              </div>
-                            ) : (
-                              <span className="text-muted small">Never</span>
-                            )}
-                          </td>
-                          <td className="pe-4 text-end">
-                            <div className="btn-group btn-group-sm">
-                              {/* Edit Profile */}
-                              <button
-                                className="btn btn-outline-secondary"
-                                onClick={() => handleOpenEditUser(u)}
-                                title="Edit Profile"
-                              >
-                                <Edit3 size={14} />
-                              </button>
-
-                              {/* Reset Password */}
-                              <button
-                                className="btn btn-outline-secondary"
-                                onClick={() => handleResetPassword(u)}
-                                title="Generate Temporary Password"
-                              >
-                                <Key size={14} />
-                              </button>
-
-                              {/* Activate / Deactivate Toggle */}
-                              {!isSelf && (
-                                <button
-                                  className={`btn ${u.isActive === false ? 'btn-outline-success' : 'btn-outline-warning'}`}
-                                  onClick={() => setConfirmStatusUser(u)}
-                                  title={u.isActive === false ? 'Activate User' : 'Disable User'}
-                                >
-                                  {u.isActive === false ? <UserCheck size={14} /> : <UserX size={14} />}
-                                </button>
-                              )}
-
-                              {/* Delete */}
-                              {!isSelf && (
-                                <button
-                                  className="btn btn-outline-danger"
-                                  onClick={() => setConfirmDeleteUser(u)}
-                                  title="Delete User"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          {/* Users Table */}
+          <DataTable
+            columns={userColumns}
+            data={filteredUsers}
+            currentPage={userPage}
+            itemsPerPage={10}
+            onPageChange={setUserPage}
+            emptyTitle="No registered users found"
+            emptyMessage="No accounts match your current filter criteria."
+            emptyActionLabel="Reset Filters"
+            onEmptyAction={() => {
+              setUserSearch('');
+              setUserRoleFilter('all');
+              setUserStatusFilter('all');
+            }}
+          />
         </div>
       )}
 
-      {/* TAB 4: Activity Log */}
+      {/* ============================================================== */}
+      {/* TAB 4: AUDIT ACTIVITY LOG                                      */}
+      {/* ============================================================== */}
       {activeTab === 'activity' && (
-        <div className="resq-card mb-4">
-          <div className="resq-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-            <div className="d-flex align-items-center gap-2">
-              <Activity size={18} className="text-danger" />
-              <h6 className="mb-0 fw-bold text-dark">System Activity & Audit Log</h6>
-              <span className="badge bg-dark rounded-pill">{auditLogs.length}</span>
-            </div>
-            <button
-              className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
-              onClick={() => fetchAuditLogs()}
-            >
-              <RefreshCw size={14} className={logsLoading ? 'spin' : ''} />
-              <span>Refresh Log</span>
-            </button>
+        <div className="resq-card border shadow-sm mb-4">
+          <div className="p-3 border-bottom bg-white">
+            <FilterBar
+              searchQuery={logSearch}
+              onSearchChange={(q) => {
+                setLogSearch(q);
+                setLogPage(1);
+              }}
+              searchPlaceholder="Search audit actions, operators, or target details..."
+              statusFilters={[
+                { label: 'Auth Actions', value: 'AUTH' },
+                { label: 'Incident Actions', value: 'INCIDENT' },
+                { label: 'User Actions', value: 'USER' }
+              ]}
+              selectedStatus={logActionFilter}
+              onStatusChange={(val) => {
+                setLogActionFilter(val);
+                setLogPage(1);
+              }}
+              onReset={() => {
+                setLogSearch('');
+                setLogActionFilter('all');
+                setLogPage(1);
+              }}
+              hasActiveFilters={Boolean(logSearch || logActionFilter !== 'all')}
+            />
           </div>
 
-          <div className="resq-card-body p-0">
-            {logsLoading ? (
-              <div className="text-center py-5">
-                <div className="spinner-border text-danger spinner-border-sm me-2" role="status"></div>
-                <span className="text-muted small">Loading activity entries...</span>
-              </div>
-            ) : auditLogs.length === 0 ? (
-              <div className="text-center py-5 text-muted">
-                <Activity size={36} className="mb-2 text-secondary opacity-50" />
-                <div>No administrative activity logs recorded yet.</div>
-              </div>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-hover align-middle mb-0">
-                  <thead className="table-light small text-uppercase text-secondary">
-                    <tr>
-                      <th className="ps-4">Timestamp</th>
-                      <th>Admin / Initiator</th>
-                      <th>Action</th>
-                      <th>Target</th>
-                      <th className="pe-4">Details</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {auditLogs.map((log) => (
-                      <tr key={log._id || log.id}>
-                        <td className="ps-4 text-nowrap small text-muted">
-                          {new Date(log.timestamp).toLocaleDateString('en-IN', {
-                            day: '2-digit', month: 'short', year: 'numeric',
-                            hour: '2-digit', minute: '2-digit', second: '2-digit'
-                          })}
-                        </td>
-                        <td>
-                          <div className="fw-semibold text-dark small">{log.userName}</div>
-                          <span className="badge bg-light text-muted border" style={{ fontSize: '0.65rem' }}>
-                            {log.userRole}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="badge bg-dark font-monospace" style={{ fontSize: '0.72rem' }}>
-                            {log.action}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="small text-secondary fw-semibold">
-                            {log.targetType}: <span className="text-danger">{log.targetId}</span>
-                          </span>
-                        </td>
-                        <td className="pe-4 small text-muted">
-                          {log.details && typeof log.details === 'object' ? (
-                            <code>{JSON.stringify(log.details)}</code>
-                          ) : (
-                            String(log.details || '—')
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+          <DataTable
+            columns={logColumns}
+            data={filteredLogs}
+            currentPage={logPage}
+            itemsPerPage={10}
+            onPageChange={setLogPage}
+            emptyTitle="No activity entries recorded"
+            emptyMessage="No matching security or dispatch audit logs were found."
+          />
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* TAB 5: PUNE GIS SITUATION MAP                                  */}
+      {/* ============================================================== */}
+      {activeTab === 'map' && (
+        <div className="resq-card border shadow-sm overflow-hidden mb-4">
+          <div className="p-3 border-bottom bg-light-subtle d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div>
+              <h6 className="fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+                <MapPin size={16} className="text-danger" />
+                Live Incident Coordinates Across Pune Municipal Sectors
+              </h6>
+              <span className="text-muted small">
+                Click any marker to inspect incident dispatch timeline and details.
+              </span>
+            </div>
+            <div className="d-flex align-items-center gap-2">
+              <span className="badge bg-danger-subtle text-danger border border-danger-subtle">
+                {incidents.filter((i) => i.severity === 'Critical').length} Critical
+              </span>
+              <span className="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">
+                {incidents.filter((i) => i.severity === 'High').length} High
+              </span>
+              <span className="badge bg-primary-subtle text-primary border border-primary-subtle">
+                {incidents.length} Total Pinpoints
+              </span>
+            </div>
+          </div>
+          <div className="p-0">
+            <IncidentMap incidentsList={incidents} height="600px" />
           </div>
         </div>
       )}
 
-      {/* MODAL 1: Edit User Profile */}
+      {/* ============================================================== */}
+      {/* MODALS: EDIT USER, RESET PASSWORD, CREATE RESCUE, CONFIRMATIONS */}
+      {/* ============================================================== */}
+
+      {/* 1. Edit User Modal */}
       {editingUser && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(11, 19, 41, 0.65)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow">
-              <div className="modal-header bg-light border-bottom">
-                <h5 className="modal-title fw-bold fs-6 d-flex align-items-center gap-2">
-                  <Edit3 size={18} className="text-danger" /> Edit User Profile
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setEditingUser(null)}></button>
+        <div
+          className="modal fade show d-block"
+          tabIndex="-1"
+          role="dialog"
+          aria-modal="true"
+          style={{ backgroundColor: 'rgba(11, 19, 41, 0.72)', zIndex: 1060 }}
+        >
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '440px' }}>
+            <div className="modal-content border-0 shadow-lg rounded-3">
+              <div className="modal-header bg-navy text-white py-3 px-4">
+                <h5 className="modal-title fw-bold fs-6 mb-0">Edit User Details</h5>
+                <button
+                  type="button"
+                  className="btn-close btn-close-white"
+                  onClick={() => setEditingUser(null)}
+                ></button>
               </div>
               <form onSubmit={handleSaveEditUser}>
                 <div className="modal-body p-4">
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold text-dark">Full Name</label>
+                    <label className="form-label small fw-bold text-dark">Full Name</label>
                     <input
                       type="text"
-                      className="form-control"
+                      className="form-control form-control-sm"
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
                       required
                     />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold text-dark">Email Address</label>
+                    <label className="form-label small fw-bold text-dark">Phone Number</label>
+                    <input
+                      type="tel"
+                      className="form-control form-control-sm"
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label small fw-bold text-dark">Email Address</label>
                     <input
                       type="email"
-                      className="form-control"
+                      className="form-control form-control-sm"
                       value={editEmail}
                       onChange={(e) => setEditEmail(e.target.value)}
                       required
                     />
                   </div>
-                  <div className="mb-3">
-                    <label className="form-label small fw-semibold text-dark">Phone Number</label>
-                    <input
-                      type="tel"
-                      className="form-control"
-                      value={editPhone}
-                      onChange={(e) => setEditPhone(e.target.value)}
-                    />
-                  </div>
                 </div>
-                <div className="modal-footer bg-light border-top">
-                  <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setEditingUser(null)}>
+                <div className="modal-footer bg-light px-4 py-2.5 border-top">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-secondary"
+                    onClick={() => setEditingUser(null)}
+                    disabled={isEditingUserSubmitting}
+                  >
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-resq-danger btn-sm">
-                    Save Changes
+                  <button
+                    type="submit"
+                    className="btn btn-sm btn-primary"
+                    disabled={isEditingUserSubmitting}
+                  >
+                    {isEditingUserSubmitting ? 'Saving...' : 'Save Profile'}
                   </button>
                 </div>
               </form>
@@ -1057,39 +1617,55 @@ export const AdminDashboard = ({ onOpenAssignModal }) => {
         </div>
       )}
 
-      {/* MODAL 2: Temporary Password Generated */}
+      {/* 2. Temporary Password Modal */}
       {tempPasswordResult && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(11, 19, 41, 0.65)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow">
-              <div className="modal-header bg-light border-bottom">
-                <h5 className="modal-title fw-bold fs-6 d-flex align-items-center gap-2">
-                  <Key size={18} className="text-success" /> Temporary Password Created
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setTempPasswordResult(null)}></button>
+        <div
+          className="modal fade show d-block"
+          tabIndex="-1"
+          role="dialog"
+          aria-modal="true"
+          style={{ backgroundColor: 'rgba(11, 19, 41, 0.72)', zIndex: 1060 }}
+        >
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '420px' }}>
+            <div className="modal-content border-0 shadow-lg rounded-3">
+              <div className="modal-header bg-warning-subtle text-warning-emphasis py-3 px-4">
+                <div className="d-flex align-items-center gap-2">
+                  <Key size={18} />
+                  <h5 className="modal-title fw-bold fs-6 mb-0">Temporary Password Generated</h5>
+                </div>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setTempPasswordResult(null)}
+                ></button>
               </div>
               <div className="modal-body p-4 text-center">
                 <p className="text-secondary small mb-3">
-                  A high-entropy temporary password has been set. The user must update their password upon next sign in.
+                  This user will be required to change their password upon their next sign-in.
                 </p>
-                <div className="p-3 bg-light border rounded d-flex align-items-center justify-content-between mb-3">
-                  <span className="fw-bold font-monospace text-danger fs-5">{tempPasswordResult}</span>
+                <div className="p-3 bg-light rounded border d-flex align-items-center justify-content-between mb-3">
+                  <code className="fs-5 fw-bold text-dark tracking-wider select-all">
+                    {tempPasswordResult}
+                  </code>
                   <button
                     type="button"
-                    className="btn btn-sm btn-outline-dark d-flex align-items-center gap-1"
+                    className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
                     onClick={handleCopyTempPassword}
                   >
                     {copiedPass ? <Check size={14} className="text-success" /> : <Copy size={14} />}
-                    <span>{copiedPass ? 'Copied!' : 'Copy'}</span>
+                    <span>{copiedPass ? 'Copied' : 'Copy'}</span>
                   </button>
                 </div>
-                <div className="alert alert-warning py-2 small mb-0 d-flex align-items-center gap-2 text-start">
-                  <AlertTriangle size={16} className="flex-shrink-0" />
-                  <span>Please share this password securely with the user immediately.</span>
+                <div className="small text-muted">
+                  Share this temporary password securely with the user.
                 </div>
               </div>
-              <div className="modal-footer bg-light border-top">
-                <button type="button" className="btn btn-resq-primary btn-sm" onClick={() => setTempPasswordResult(null)}>
+              <div className="modal-footer bg-light px-4 py-2.5 border-top">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary w-100"
+                  onClick={() => setTempPasswordResult(null)}
+                >
                   Done
                 </button>
               </div>
@@ -1098,87 +1674,105 @@ export const AdminDashboard = ({ onOpenAssignModal }) => {
         </div>
       )}
 
-      {/* MODAL 3: Add Rescue Squad User */}
+      {/* 3. Create Rescue Squad User Modal */}
       {showAddRescueModal && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(11, 19, 41, 0.65)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow">
-              <div className="modal-header bg-light border-bottom">
-                <h5 className="modal-title fw-bold fs-6 d-flex align-items-center gap-2">
-                  <Ambulance size={18} className="text-danger" /> Add Rescue Squad User
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setShowAddRescueModal(false)}></button>
+        <div
+          className="modal fade show d-block"
+          tabIndex="-1"
+          role="dialog"
+          aria-modal="true"
+          style={{ backgroundColor: 'rgba(11, 19, 41, 0.72)', zIndex: 1060 }}
+        >
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '480px' }}>
+            <div className="modal-content border-0 shadow-lg rounded-3">
+              <div className="modal-header bg-navy text-white py-3 px-4">
+                <h5 className="modal-title fw-bold fs-6 mb-0">Create Rescue Squad Account</h5>
+                <button
+                  type="button"
+                  className="btn-close btn-close-white"
+                  onClick={() => setShowAddRescueModal(false)}
+                ></button>
               </div>
               <form onSubmit={handleCreateRescueSubmit}>
                 <div className="modal-body p-4">
                   {addRescueError && (
-                    <div className="alert alert-danger py-2 small mb-3">{addRescueError}</div>
+                    <div className="alert alert-danger py-2 small mb-3">
+                      {addRescueError}
+                    </div>
                   )}
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold text-dark">Full Squad / Contact Name</label>
+                    <label className="form-label small fw-bold text-dark">Officer / User Name</label>
                     <input
                       type="text"
-                      className="form-control"
-                      placeholder="e.g. PERT-02 Alpha Lead"
+                      className="form-control form-control-sm"
                       value={addRescueForm.name}
                       onChange={(e) => setAddRescueForm({ ...addRescueForm, name: e.target.value })}
+                      placeholder="e.g. Inspector Ramesh Kadam"
                       required
                     />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold text-dark">Email Address (Login)</label>
+                    <label className="form-label small fw-bold text-dark">Official Email</label>
                     <input
                       type="email"
-                      className="form-control"
-                      placeholder="e.g. pert02@resqnet.org"
+                      className="form-control form-control-sm"
                       value={addRescueForm.email}
                       onChange={(e) => setAddRescueForm({ ...addRescueForm, email: e.target.value })}
+                      placeholder="e.g. squad1@resqnet.org"
                       required
                     />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold text-dark">Link to Rescue Squad</label>
+                    <label className="form-label small fw-bold text-dark">Contact Phone</label>
+                    <input
+                      type="tel"
+                      className="form-control form-control-sm"
+                      value={addRescueForm.phone}
+                      onChange={(e) => setAddRescueForm({ ...addRescueForm, phone: e.target.value })}
+                      placeholder="e.g. 9820011223"
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label small fw-bold text-dark">Assign to Squad Unit</label>
                     <select
-                      className="form-select"
+                      className="form-select form-select-sm"
                       value={addRescueForm.teamId}
                       onChange={(e) => setAddRescueForm({ ...addRescueForm, teamId: e.target.value })}
-                      required
                     >
                       {rescueTeams.map((team) => (
                         <option key={team.id} value={team.id}>
-                          {team.id} — {team.name} ({team.currentLocation})
+                          {team.name} ({team.id}) • {team.currentLocation}
                         </option>
                       ))}
                     </select>
                   </div>
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold text-dark">Initial Password</label>
+                    <label className="form-label small fw-bold text-dark">Initial Password</label>
                     <input
                       type="password"
-                      className="form-control"
-                      placeholder="Create secure password (min 8 chars)"
+                      className="form-control form-control-sm"
                       value={addRescueForm.password}
                       onChange={(e) => setAddRescueForm({ ...addRescueForm, password: e.target.value })}
+                      placeholder="At least 6 characters"
                       required
                     />
                   </div>
-                  <div className="mb-3">
-                    <label className="form-label small fw-semibold text-dark">Contact Phone</label>
-                    <input
-                      type="tel"
-                      className="form-control"
-                      placeholder="+91 (020) 2550-6789"
-                      value={addRescueForm.phone}
-                      onChange={(e) => setAddRescueForm({ ...addRescueForm, phone: e.target.value })}
-                    />
-                  </div>
                 </div>
-                <div className="modal-footer bg-light border-top">
-                  <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setShowAddRescueModal(false)}>
+                <div className="modal-footer bg-light px-4 py-2.5 border-top">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-secondary"
+                    onClick={() => setShowAddRescueModal(false)}
+                    disabled={isCreatingRescue}
+                  >
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-resq-danger btn-sm">
-                    Create Squad Account
+                  <button
+                    type="submit"
+                    className="btn btn-sm btn-resq-danger"
+                    disabled={isCreatingRescue}
+                  >
+                    {isCreatingRescue ? 'Creating Account...' : 'Create Rescue Account'}
                   </button>
                 </div>
               </form>
@@ -1187,78 +1781,44 @@ export const AdminDashboard = ({ onOpenAssignModal }) => {
         </div>
       )}
 
-      {/* MODAL 4: Confirm Activate / Deactivate */}
-      {confirmStatusUser && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(11, 19, 41, 0.65)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow">
-              <div className="modal-header bg-light border-bottom">
-                <h5 className="modal-title fw-bold fs-6 d-flex align-items-center gap-2">
-                  <ShieldAlert size={18} className="text-warning" />
-                  Confirm Status Change
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setConfirmStatusUser(null)}></button>
-              </div>
-              <div className="modal-body p-4">
-                <p className="text-secondary mb-0">
-                  Are you sure you want to {confirmStatusUser.isActive === false ? 'reactivate' : 'disable'} account{' '}
-                  <strong>{confirmStatusUser.email}</strong>?
-                  {confirmStatusUser.isActive !== false && (
-                    <span className="d-block mt-2 text-danger small">
-                      Disabled accounts cannot log into ResQNet until re-enabled by an administrator.
-                    </span>
-                  )}
-                </p>
-              </div>
-              <div className="modal-footer bg-light border-top">
-                <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setConfirmStatusUser(null)}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-sm ${confirmStatusUser.isActive === false ? 'btn-success' : 'btn-danger'}`}
-                  onClick={handleToggleStatus}
-                >
-                  Confirm {confirmStatusUser.isActive === false ? 'Activation' : 'Deactivation'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 4. Confirm Status Toggle Modal */}
+      <ConfirmModal
+        isOpen={Boolean(confirmStatusUser)}
+        onClose={() => setConfirmStatusUser(null)}
+        onConfirm={handleConfirmToggleStatus}
+        title={confirmStatusUser?.isActive !== false ? 'Disable User Account' : 'Re-enable User Account'}
+        message={
+          confirmStatusUser?.isActive !== false
+            ? `Are you sure you want to disable ${confirmStatusUser?.name} (${confirmStatusUser?.email})? They will be unable to sign in until re-enabled.`
+            : `Re-enable account access for ${confirmStatusUser?.name} (${confirmStatusUser?.email})?`
+        }
+        confirmLabel={confirmStatusUser?.isActive !== false ? 'Disable Account' : 'Enable Account'}
+        isDestructive={confirmStatusUser?.isActive !== false}
+        isLoading={isStatusSubmitting}
+      />
 
-      {/* MODAL 5: Confirm Delete User */}
-      {confirmDeleteUser && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(11, 19, 41, 0.65)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow">
-              <div className="modal-header bg-light border-bottom">
-                <h5 className="modal-title fw-bold fs-6 d-flex align-items-center gap-2">
-                  <Trash2 size={18} className="text-danger" /> Delete User Account
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setConfirmDeleteUser(null)}></button>
-              </div>
-              <div className="modal-body p-4">
-                <p className="text-secondary mb-0">
-                  Are you sure you want to permanently delete account for <strong>{confirmDeleteUser.name}</strong> ({confirmDeleteUser.email})?
-                  <span className="d-block mt-2 text-danger small">
-                    This action is permanent and cannot be undone.
-                  </span>
-                </p>
-              </div>
-              <div className="modal-footer bg-light border-top">
-                <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setConfirmDeleteUser(null)}>
-                  Cancel
-                </button>
-                <button type="button" className="btn btn-danger btn-sm" onClick={handleDeleteUser}>
-                  Delete Account
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 5. Confirm Delete User Modal */}
+      <ConfirmModal
+        isOpen={Boolean(confirmDeleteUser)}
+        onClose={() => setConfirmDeleteUser(null)}
+        onConfirm={handleConfirmDeleteUser}
+        title="Delete User Account"
+        message={`Warning: Are you sure you want to permanently delete user account "${confirmDeleteUser?.name}" (${confirmDeleteUser?.email})? This action cannot be reversed.`}
+        confirmLabel="Permanently Delete"
+        isDestructive={true}
+        isLoading={isDeleteSubmitting}
+      />
 
+      {/* 6. Local Assign Modal if triggered from internal table actions */}
+      {localAssignTarget && (
+        <AssignTeamModal
+          incident={localAssignTarget}
+          onClose={() => setLocalAssignTarget(null)}
+          onAssigned={handleSquadAssigned}
+        />
+      )}
     </div>
   );
 };
+
+export default AdminDashboard;
