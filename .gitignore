@@ -4,3 +4,5 @@ node_modules/
 !.env.example
 client/dist/
 server/dist/
+server/uploads/*
+!server/uploads/.gitkeep

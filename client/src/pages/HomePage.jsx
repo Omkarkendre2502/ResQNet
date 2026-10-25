@@ -211,7 +211,7 @@ export const HomePage = () => {
                 </div>
                 <h6 className="fw-bold mb-1">2. Admin Triage</h6>
                 <p className="text-secondary small mb-0">
-                  Admin Rahul Patil reviews incident on the dashboard and assigns a rescue team.
+                  Control center admin reviews incident on the dashboard and assigns a rescue team.
                 </p>
               </div>
             </div>

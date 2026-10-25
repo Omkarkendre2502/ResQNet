@@ -410,11 +410,11 @@ export const RescueTeamDashboard = () => {
                         </div>
                       </div>
 
-                      {/* Status Update Buttons */}
+                      {/* Status Action Progression */}
                       <div className="pt-3 border-top">
                         <div className="d-flex align-items-center justify-content-between mb-2">
                           <span className="text-muted small fw-semibold">
-                            Update Operational Status:
+                            Operational Action:
                           </span>
                           <button
                             type="button"
@@ -422,105 +422,117 @@ export const RescueTeamDashboard = () => {
                             style={{ fontSize: '0.75rem' }}
                             onClick={() => setSelectedIncident(inc)}
                           >
-                            <Eye size={12} /> View Full Incident
+                            <Eye size={13} /> View Full Incident
                           </button>
                         </div>
 
-                        {/* The 5 step buttons: Assigned -> On the Way -> Reached -> In Progress -> Completed */}
-                        <div className="d-flex flex-wrap gap-1">
-                          <button
-                            type="button"
-                            className={`btn btn-sm ${
-                              inc.status === 'Assigned'
-                                ? 'btn-danger fw-bold'
-                                : 'btn-outline-secondary'
-                            }`}
-                            style={{ fontSize: '0.74rem' }}
-                            onClick={() =>
-                              updateIncidentStatus(
-                                inc.id,
-                                'Assigned',
-                                `${currentTeam.name} acknowledged mission assignment.`
-                              )
-                            }
-                          >
-                            Assigned
-                          </button>
+                        {/* Prominent Next Action Button */}
+                        {inc.status === 'Assigned' && (
+                          <div className="d-grid mb-2">
+                            <button
+                              type="button"
+                              className="btn btn-primary fw-semibold d-flex align-items-center justify-content-center gap-2 py-2"
+                              onClick={() =>
+                                updateIncidentStatus(
+                                  inc.id,
+                                  'On the Way',
+                                  `${currentTeam.name} departed base and is en route to ${inc.location.split(',')[0]}.`
+                                )
+                              }
+                            >
+                              <Navigation size={16} />
+                              <span>Depart to Scene (Mark On the Way) &rarr;</span>
+                            </button>
+                          </div>
+                        )}
 
-                          <button
-                            type="button"
-                            className={`btn btn-sm ${
-                              inc.status === 'On the Way'
-                                ? 'btn-primary fw-bold'
-                                : 'btn-outline-primary'
-                            }`}
-                            style={{ fontSize: '0.74rem' }}
-                            onClick={() =>
-                              updateIncidentStatus(
-                                inc.id,
-                                'On the Way',
-                                `${currentTeam.name} is on the way to ${inc.location.split(',')[0]}.`
-                              )
-                            }
-                          >
-                            On the Way
-                          </button>
+                        {inc.status === 'On the Way' && (
+                          <div className="d-grid mb-2">
+                            <button
+                              type="button"
+                              className="btn btn-info text-white fw-semibold d-flex align-items-center justify-content-center gap-2 py-2"
+                              onClick={() =>
+                                updateIncidentStatus(
+                                  inc.id,
+                                  'Reached',
+                                  `${currentTeam.name} arrived at the emergency scene: ${inc.location}.`
+                                )
+                              }
+                            >
+                              <MapPin size={16} />
+                              <span>Confirm Arrival (Mark Reached Scene) &rarr;</span>
+                            </button>
+                          </div>
+                        )}
 
-                          <button
-                            type="button"
-                            className={`btn btn-sm ${
-                              inc.status === 'Reached'
-                                ? 'btn-info text-white fw-bold'
-                                : 'btn-outline-info'
-                            }`}
-                            style={{ fontSize: '0.74rem' }}
-                            onClick={() =>
-                              updateIncidentStatus(
-                                inc.id,
-                                'Reached',
-                                `${currentTeam.name} reached the scene at ${inc.location}.`
-                              )
-                            }
-                          >
-                            Reached
-                          </button>
+                        {inc.status === 'Reached' && (
+                          <div className="d-grid mb-2">
+                            <button
+                              type="button"
+                              className="btn btn-warning text-dark fw-bold d-flex align-items-center justify-content-center gap-2 py-2"
+                              onClick={() =>
+                                updateIncidentStatus(
+                                  inc.id,
+                                  'In Progress',
+                                  `${currentTeam.name} initiated active emergency rescue and containment operations.`
+                                )
+                              }
+                            >
+                              <ShieldCheck size={16} />
+                              <span>Begin Rescue Operations (In Progress) &rarr;</span>
+                            </button>
+                          </div>
+                        )}
 
-                          <button
-                            type="button"
-                            className={`btn btn-sm ${
-                              inc.status === 'In Progress'
-                                ? 'btn-warning text-dark fw-bold'
-                                : 'btn-outline-warning'
-                            }`}
-                            style={{ fontSize: '0.74rem' }}
-                            onClick={() =>
-                              updateIncidentStatus(
-                                inc.id,
-                                'In Progress',
-                                `${currentTeam.name} is actively executing rescue operations.`
-                              )
-                            }
-                          >
-                            In Progress
-                          </button>
+                        {inc.status === 'In Progress' && (
+                          <div className="d-grid mb-2">
+                            <button
+                              type="button"
+                              className="btn btn-success fw-bold d-flex align-items-center justify-content-center gap-2 py-2"
+                              onClick={() =>
+                                updateIncidentStatus(
+                                  inc.id,
+                                  'Completed',
+                                  `Rescue operation successfully completed by ${currentTeam.name}. Scene secured and casualties triaged.`
+                                )
+                              }
+                            >
+                              <CheckCircle size={16} />
+                              <span>Complete Mission (Mark Resolved) &check;</span>
+                            </button>
+                          </div>
+                        )}
 
-                          <button
-                            type="button"
-                            className={`btn btn-sm ${
-                              isCompleted ? 'btn-success fw-bold' : 'btn-outline-success'
-                            }`}
-                            style={{ fontSize: '0.74rem' }}
-                            onClick={() =>
+                        {isCompleted && (
+                          <div className="p-2 bg-success-subtle border border-success-subtle text-success rounded text-center small fw-semibold mb-2 d-flex align-items-center justify-content-center gap-1">
+                            <CheckCircle size={16} />
+                            <span>Mission Accomplished &bull; Operations Finalized</span>
+                          </div>
+                        )}
+
+                        {/* Optional Manual Status Override Dropdown */}
+                        <div className="d-flex align-items-center justify-content-end gap-1 mt-1">
+                          <span className="text-muted" style={{ fontSize: '0.7rem' }}>
+                            Override:
+                          </span>
+                          <select
+                            className="form-select form-select-sm py-0 px-2 text-secondary"
+                            style={{ width: 'auto', fontSize: '0.72rem', height: '24px' }}
+                            value={inc.status}
+                            onChange={(e) =>
                               updateIncidentStatus(
                                 inc.id,
-                                'Completed',
-                                `Rescue operation successfully completed by ${currentTeam.name}. Scene secured.`
+                                e.target.value,
+                                `Status manually updated to ${e.target.value} by ${currentTeam.name} squad commander.`
                               )
                             }
                           >
-                            <Check size={12} className="d-inline me-1" />
-                            Completed
-                          </button>
+                            <option value="Assigned">Assigned</option>
+                            <option value="On the Way">On the Way</option>
+                            <option value="Reached">Reached</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Completed">Completed</option>
+                          </select>
                         </div>
                       </div>
                     </div>

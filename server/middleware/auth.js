@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import { getJwtSecret } from '../config/jwt.js';
 
 export const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -10,11 +11,15 @@ export const authenticateToken = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'resqnet_jwt_secret_pune_2026_super_secure_key');
-    req.user = decoded;
+    const decoded = jwt.verify(token, getJwtSecret());
+    const user = await User.findById(decoded.id).select('-password');
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid authentication token: user not found.' });
+    }
+    req.user = user;
     next();
   } catch (error) {
-    return res.status(403).json({ error: 'Invalid or expired authentication token.' });
+    return res.status(401).json({ error: 'Invalid or expired authentication token.' });
   }
 };
 
@@ -27,8 +32,11 @@ export const optionalAuth = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'resqnet_jwt_secret_pune_2026_super_secure_key');
-    req.user = decoded;
+    const decoded = jwt.verify(token, getJwtSecret());
+    const user = await User.findById(decoded.id).select('-password');
+    if (user) {
+      req.user = user;
+    }
   } catch (e) {
     // Ignore invalid optional token
   }
@@ -45,3 +53,4 @@ export const authorizeRoles = (...roles) => {
     next();
   };
 };
+
